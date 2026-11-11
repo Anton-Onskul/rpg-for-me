@@ -18,7 +18,8 @@ test.before(async () => {
 });
 test.after(async () => { await browser.close(); });
 
-async function open(width, height, { touch = false, ctx } = {}) {
+// role: 'player' — сразу нажать «Игрок» на стартовом экране (так начинались все старые тесты); null — остаться на нём.
+async function open(width, height, { touch = false, ctx, role = 'player' } = {}) {
   const context = ctx || await browser.newContext({ viewport: { width, height }, hasTouch: touch, isMobile: touch });
   const page = await context.newPage();
   const errors = [];
@@ -26,6 +27,7 @@ async function open(width, height, { touch = false, ctx } = {}) {
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
   await page.route('**/*', (r) => (r.request().url().startsWith('http://app.test') ? r.fulfill({ contentType: 'text/html', body: HTML }) : r.abort()));
   await page.goto('http://app.test/');
+  if (role) { await page.click(`[data-role="${role}"]`); await page.waitForSelector(role === 'gm' ? '#tbl' : '.game[data-game]'); }
   return { page, context, errors };
 }
 
@@ -41,7 +43,7 @@ test('выбор игры: три системы, без ошибок и гор�
 
 test('D&D: новый персонаж, модификаторы, навыки, сохранение после перезагрузки', async () => {
   const { page, errors, context } = await open(1280, 900);
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.fill('#f_name', 'Торин');
   await page.fill('#f_str', '16');
@@ -67,7 +69,7 @@ test('D&D: новый персонаж, модификаторы, навыки, 
 
 test('GURPS: стоимость характеристик и остаток очков', async () => {
   const { page, errors, context } = await open(1280, 900);
-  await page.click('[data-game="gurps4e"]');
+  await page.click('[data-game="gurps4e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.fill('#f_DX', '12');
   assert.equal(await page.textContent('[data-calc="cost:DX"]'), '[40]');
@@ -83,7 +85,7 @@ test('GURPS: стоимость характеристик и остаток о�
 
 test('Манчкин: кнопки уровня и боевая сила, уровень не выше 10', async () => {
   const { page, errors, context } = await open(390, 800, { touch: true });
-  await page.click('[data-game="munchkin"]');
+  await page.click('[data-game="munchkin"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   for (let i = 0; i < 12; i++) await page.click('[data-step="level"][data-d="1"]');
   assert.equal(await page.textContent('[data-calc="mk:level"]'), '10');
@@ -98,7 +100,7 @@ test('Манчкин: кнопки уровня и боевая сила, уро
 
 test('телефон: свайп вправо открывает справку, влево закрывает; «?» показывает пояснение', async () => {
   const { page, errors, context } = await open(390, 800, { touch: true });
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   const isOpen = () => page.evaluate(() => document.body.classList.contains('help-open'));
   assert.equal(await isOpen(), false, 'на телефоне справка сначала закрыта');
@@ -129,7 +131,7 @@ test('телефон: свайп вправо открывает справку,
 
 test('компьютер: справка закреплена сбоку, кнопка её скрывает; поиск по полям', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="gurps4e"]');
+  await page.click('[data-game="gurps4e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   assert.equal(await page.isVisible('#help'), true, 'панель видна сразу');
   const mainX = await page.evaluate(() => document.querySelector('main').getBoundingClientRect().left);
   assert.ok(mainX >= 300, 'лист не перекрыт панелью');
@@ -146,7 +148,7 @@ test('компьютер: справка закреплена сбоку, кно
 
 test('выгрузка и загрузка файла', async () => {
   const { page, errors, context } = await open(1280, 900);
-  await page.click('[data-game="munchkin"]');
+  await page.click('[data-game="munchkin"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.fill('#f_name', 'Вася');
   await page.goto('http://app.test/#list-munchkin');
@@ -157,7 +159,7 @@ test('выгрузка и загрузка файла', async () => {
   assert.equal(await page.locator('#exportText').count(), 0, 'окно «скачать не получилось» не появляется');
   const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const p2 = (await open(0, 0, { ctx: ctx2 })).page;
-  await p2.click('[data-game="munchkin"]');
+  await p2.click('[data-game="munchkin"]'); await p2.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await p2.setInputFiles('#importFile', { name: 'x.json', mimeType: 'application/json', buffer: Buffer.from(json) });
   await p2.waitForSelector('.char');
   assert.match(await p2.textContent('.chars'), /Вася/);
@@ -172,7 +174,7 @@ test('справка показывает только нужное на тек�
   // Выбор игры: нет списка полей и пояснений к полям
   assert.equal(await page.locator('#glossary').count(), 0);
   // Список персонажей: шаги создания и ссылки, но не список полей
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   assert.match(await helpText(), /Как создать персонажа/);
   assert.match(await helpText(), /Где читать правила/);
   assert.equal(await page.locator('#glossary').count(), 0, 'на списке персонажей нет списка полей');
@@ -191,7 +193,7 @@ test('справка показывает только нужное на тек�
 
 test('D&D: «?» у заголовка «Характеристики» объясняет все шесть, а не только Силу', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.click('#view h2:has-text("Характеристики") .q');
   const card = await page.textContent('#fieldCard');
@@ -201,7 +203,7 @@ test('D&D: «?» у заголовка «Характеристики» объя
 });
 
 async function newDnd(page) {
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
 }
 
@@ -287,7 +289,7 @@ test('D&D: у класса нет «свой вариант», старый «В
 
 test('GURPS: справочник со страницами и поиском, выбор PDF книги', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="gurps4e"]');
+  await page.click('[data-game="gurps4e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   assert.equal(await page.locator('#bookFile').count(), 1, 'выбор PDF есть уже на списке персонажей');
   assert.equal(await page.locator('#refList').count(), 0, 'справочника на списке нет');
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
@@ -310,7 +312,7 @@ test('GURPS: справочник со страницами и поиском, �
 
 test('D&D: свой класс и подкласс', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   const last = await page.$eval('#f_cls option:last-child', (o) => [o.value, o.textContent]);
   assert.deepEqual(last, ['custom', 'Свой вариант…'], 'пункт в конце списка');
@@ -335,7 +337,7 @@ test('D&D: свой класс и подкласс', async () => {
 
 test('GURPS: своё преимущество в справочнике', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="gurps4e"]');
+  await page.click('[data-game="gurps4e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.click('[data-reftab="advantages"]');
   await page.click('#refAddBtn');
@@ -362,7 +364,7 @@ test('GURPS: своё преимущество в справочнике', async
 
 test('D&D: страницы Книги игрока у класса и справочник рас и предысторий', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   assert.equal(await page.locator('#bookFile').count(), 1, 'выбор PDF Книги игрока на списке персонажей');
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.selectOption('#f_cls', 'fighter');
@@ -382,7 +384,7 @@ test('D&D: страницы Книги игрока у класса и спра�
 
 test('D&D: происхождение и предыстория из книг, источник и страница', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   const opts = (sel) => page.$$eval(sel + ' option', (os) => os.map((o) => o.textContent));
   assert.ok(!(await opts('#f_race')).some((t) => /Табакси/.test(t)));
@@ -410,7 +412,7 @@ test('D&D: происхождение и предыстория из книг, �
 test('выгрузка внутри Claude без разрешения на файлы — окно с текстом', async () => {
   const { page, errors, context } = await open(1280, 900);
   await page.evaluate(() => { window.claude = { use: async () => null }; });
-  await page.click('[data-game="munchkin"]');
+  await page.click('[data-game="munchkin"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   await page.goto('http://app.test/#list-munchkin');
   await page.evaluate(() => { window.claude = { use: async () => null }; });
@@ -422,7 +424,7 @@ test('выгрузка внутри Claude без разрешения на фа
 
 test('D&D: стандартный режим — только Книга игрока, расширенный открывает остальные книги', async () => {
   const { page, errors, context } = await open(1366, 900);
-  await page.click('[data-game="dnd5e"]');
+  await page.click('[data-game="dnd5e"]'); await page.waitForSelector('[data-act="new"]'); // список открывается после смены адреса
   await page.click('[data-act="new"]'); await page.waitForSelector('#sheet'); // лист открывается после смены адреса
   assert.equal(await page.isChecked('#f_extended'), false, 'по умолчанию стандартный');
   assert.equal(await page.locator('[data-book="VGM"]').count(), 0, 'дополнения скрыты');

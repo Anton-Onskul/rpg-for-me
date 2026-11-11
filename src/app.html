@@ -132,6 +132,111 @@ main { flex: 1; min-width: 0; padding-block: 20px 64px; padding-left: max(16px, 
 @media (min-width: 1024px) { .edge-hint { display: none; } }
 @media (prefers-reduced-motion: reduce) { #help, .scrim { transition: none; } #help .field-card.flash { animation: none; } }
 
+/* ---------- Стартовый экран и подключение ---------- */
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.role { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 22px; cursor: pointer; display: grid; gap: 8px; align-content: start; color: var(--ink); }
+.role:hover { border-color: var(--accent); }
+.role .die { font-family: var(--f-num); font-size: .8rem; color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
+.role .name { font-family: var(--f-display); font-size: 2rem; }
+.role .desc { color: var(--muted); }
+.join { max-width: 460px; }
+.join-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+
+/* ---------- Режим стола: справка не нужна, карта на всю ширину ---------- */
+body.mode-table #help, body.mode-table #helpBtn, body.mode-table .edge-hint, body.mode-table .scrim { display: none !important; }
+body.mode-table main { padding-block: 10px 16px; }
+body.mode-table .wrap { max-width: none; }
+.tbl { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "map" "chat" "side"; }
+@media (min-width: 1100px) {
+  .tbl { grid-template-columns: 300px minmax(0, 1fr) 300px; grid-template-areas: "top top top" "side map chat"; height: calc(100vh - 57px - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); grid-template-rows: auto minmax(0, 1fr); }
+  .tbl-side, .tbl-chat { overflow: auto; }
+}
+.tbl-top { grid-area: top; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+.tbl-top .code { font-family: var(--f-num); font-size: 1.25rem; letter-spacing: .12em; color: var(--accent); }
+.tbl-top .net { font-size: .85rem; color: var(--muted); }
+.tbl-top .net.ok { color: var(--ok); }
+.tbl-top .tools-r { display: flex; gap: 6px; flex-wrap: wrap; }
+.tbl .tb { border: 1px solid var(--line); background: var(--sunk); color: var(--ink); border-radius: 7px; padding: 6px 10px; cursor: pointer; font-size: .9rem; display: inline-block; }
+.tbl .tb:hover { border-color: var(--accent); }
+.tbl .tb.pri { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 700; }
+.tbl-map { grid-area: map; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; min-height: 420px; }
+.map-tools { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); align-items: center; }
+.map-tools .sp { flex: 1; }
+.map-tools .tl { border: 1px solid var(--line); background: var(--sunk); color: var(--ink); border-radius: 7px; padding: 5px 9px; cursor: pointer; font-size: .85rem; min-width: 34px; }
+.map-tools .tl[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.map-vp { position: relative; overflow: hidden; background: #2a2f2e; touch-action: none; min-height: 380px; cursor: grab; }
+.map-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #c9d3d1; padding: 20px; text-align: center; }
+.map-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.map-bg { position: absolute; inset: 0; background-size: 100% 100%; background-repeat: no-repeat; }
+.map-bg.blank { background: #8a9a7b; }
+.map-grid, .map-over, .map-fog { position: absolute; inset: 0; pointer-events: none; }
+.map-tokens { position: absolute; inset: 0; }
+.token { position: absolute; border-radius: 50%; background: var(--c); background-size: cover; background-position: center; border: 3px solid var(--c); box-shadow: 0 2px 6px rgba(0,0,0,.5); display: grid; place-items: center; cursor: default; user-select: none; touch-action: none; box-sizing: border-box; }
+.token.mine { cursor: grab; }
+.token.sel { outline: 3px solid #ffd54a; outline-offset: 2px; }
+.token.turn { box-shadow: 0 0 0 4px #ffd54a, 0 2px 8px rgba(0,0,0,.6); }
+.token.ghost { opacity: .45; border-style: dashed; }
+.token .ini { color: #fff; font-weight: 700; font-size: 14px; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+.token .lbl { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; white-space: nowrap; font-size: 11px; background: rgba(0,0,0,.65); color: #fff; padding: 0 5px; border-radius: 4px; pointer-events: none; }
+.token .hpbar { position: absolute; left: 6%; right: 6%; bottom: -3px; height: 5px; background: rgba(0,0,0,.6); border-radius: 3px; overflow: hidden; }
+.token .hpbar i { display: block; height: 100%; background: #3fbf5f; }
+.token .hst { position: absolute; bottom: -16px; font-size: 10px; color: #ffd0d0; background: rgba(0,0,0,.6); padding: 0 4px; border-radius: 4px; white-space: nowrap; }
+.ruler { stroke: #ffd54a; stroke-width: 3; stroke-dasharray: 8 5; }
+.ruler-t { fill: #fff; font: 700 16px var(--f-body); paint-order: stroke; stroke: #000; stroke-width: 3px; }
+.fog-on { fill: rgba(255, 213, 74, .25); stroke: #ffd54a; stroke-width: 2; }
+.fog-off { fill: rgba(10, 12, 20, .45); stroke: #9aa; stroke-width: 2; }
+.map-hint { padding: 4px 8px; font-size: .85rem; color: var(--muted); min-height: 1.4em; }
+.tbl-side, .tbl-chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.tbl-side { grid-area: side; }
+.tbl-chat { grid-area: chat; }
+.tbl-chat h3 { font-size: 1rem; color: var(--accent); }
+.tabs2 { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs2 button { border: 1px solid var(--line); background: var(--sunk); color: var(--ink); border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: .88rem; }
+.tabs2 button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.tbl .form { display: grid; gap: 4px; border-top: 1px dotted var(--line); padding-top: 8px; }
+.tbl .form h4 { margin: 0 0 4px; font-family: var(--f-display); }
+.tbl .form label { font-size: .8rem; color: var(--muted); }
+.tbl .form label.chk, .tbl label.chk { color: var(--ink); font-size: .9rem; display: flex; gap: 6px; align-items: center; }
+.tbl input:not([type="checkbox"]):not([type="file"]):not([type="color"]), .tbl select, .tbl textarea { width: 100%; box-sizing: border-box; background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; min-width: 0; }
+.tbl .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; }
+.tbl .tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.tbl .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tbl .row input { flex: 1; }
+.tbl .row.small { font-size: .85rem; }
+.tbl .row.small select { width: auto; }
+.tbl .err { color: var(--bad); font-size: .85rem; min-height: 1em; }
+.tbl .muted { color: var(--muted); font-size: .9rem; margin: 0; }
+.tbl .tag { font-size: .72rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; color: var(--muted); }
+.tbl .tag.on { color: var(--ok); border-color: var(--ok); }
+.tbl .list { display: grid; gap: 4px; }
+.tbl .li { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 5px 6px; border-radius: 7px; background: var(--sunk); }
+.tbl .li.on { outline: 1px solid var(--accent); }
+.tbl .li .nm { flex: 1; min-width: 0; }
+.tbl .x { border: 0; background: none; color: var(--bad); cursor: pointer; font-size: .9rem; }
+.tbl .lnk { border: 0; background: none; color: var(--ink); text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
+.tbl .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.tbl .cb { display: flex; gap: 6px; align-items: center; padding: 5px 6px; border-radius: 7px; background: var(--sunk); margin-bottom: 4px; }
+.tbl .cb.now { outline: 2px solid var(--gold); }
+.tbl .cb .nm { flex: 1; min-width: 0; }
+.tbl .cb .hp { font-family: var(--f-num); font-size: .8rem; color: var(--muted); }
+.tbl .cb .ini { width: 3.6em !important; font-family: var(--f-num); }
+.tbl .cb .ini-v { font-family: var(--f-num); }
+.tbl .pl { padding: 8px; border-radius: 8px; background: var(--sunk); display: grid; gap: 4px; }
+.tbl .pl .kv { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .88rem; }
+.tbl .jr { display: grid; gap: 4px; padding: 8px; border-radius: 8px; background: var(--sunk); margin-top: 6px; }
+.tbl .jr h4 { margin: 0; }
+.tbl .jt { white-space: pre-wrap; }
+.dice { display: grid; gap: 6px; }
+.dice .quick { display: flex; flex-wrap: wrap; gap: 4px; }
+.chat-log { display: grid; gap: 6px; align-content: start; max-height: 46vh; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); min-height: 120px; }
+.chat-log .msg { font-size: .92rem; overflow-wrap: anywhere; }
+.chat-log .msg b.gm { color: var(--accent); }
+.chat-log .roll .ex { font-family: var(--f-num); }
+.chat-log .roll .tot { font-family: var(--f-num); font-size: 1.3rem; font-weight: 700; }
+.chat-log .roll .det { font-family: var(--f-num); font-size: .8rem; color: var(--muted); }
+.chat-log .roll.hit .tot { color: var(--ok); }
+.chat-log .roll.miss .tot { color: var(--bad); }
+
 /* ---------- Выбор игры ---------- */
 .hero h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); }
 .hero p { color: var(--muted); max-width: 60ch; margin: 6px 0 0; }
@@ -272,6 +377,9 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
 <script>/*CORE*/</script>
 <script>/*HELP*/</script>
 <script>/*GURPS*/</script>
+<script>/*TABLE*/</script>
+<script>/*NET*/</script>
+<script>/*TABLEUI*/</script>
 <script>
 (function () {
   'use strict';
@@ -662,13 +770,13 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
   $('#scrim').addEventListener('click', () => setHelpOpen(false));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && helpIsOpen() && !isDocked()) setHelpOpen(false);
-    if (e.key === '?' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) { e.preventDefault(); setHelpOpen(!helpIsOpen()); }
+    if (e.key === '?' && !document.body.classList.contains('mode-table') && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) { e.preventDefault(); setHelpOpen(!helpIsOpen()); }
   });
 
   // Свайп: вправо — открыть, влево — закрыть (только на узких экранах)
   let touch = null;
   document.addEventListener('touchstart', (e) => {
-    if (isDocked() || e.touches.length !== 1) { touch = null; return; }
+    if (isDocked() || e.touches.length !== 1 || document.body.classList.contains('mode-table')) { touch = null; return; }
     const t = e.touches[0];
     const inField = e.target.closest('input, textarea, select, .table-scroll');
     touch = inField ? null : { x: t.clientX, y: t.clientY };
@@ -684,8 +792,17 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
   }, { passive: true });
 
   // ---------- Маршруты ----------
+  let tableCtl = null;    // открытый стол мастера или игрока
+  let tableClient = null; // подключение игрока к мастеру
   function route() {
     const h = location.hash.replace(/^#/, '');
+    const tableRoute = h === 'gm' || h === 'table';
+    if (tableCtl && !tableRoute) { tableCtl.destroy(); tableCtl = null; tableClient = null; }
+    document.body.classList.toggle('mode-table', tableRoute);
+    if (h === '') return renderRoles();
+    if (h === 'gm') return renderGM();
+    if (h === 'join') return renderJoin();
+    if (h === 'table') return renderPlayerTable();
     if (h.startsWith('list-') && gameOf(h.slice(5))) return renderList(h.slice(5));
     if (h.startsWith('sheet-') && byId(h.slice(6))) return renderSheet(byId(h.slice(6)));
     return renderGames();
@@ -700,11 +817,91 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
   }
   const banner = () => (storageOk ? '' : '<div class="banner">В этом окне браузер не даёт сохранять данные. Персонажи пропадут после закрытия — выгрузите их в файл кнопкой «Выгрузить».</div>');
 
+  // ---------- Экран 0: игрок или мастер ----------
+  function renderRoles() {
+    cur = null;
+    helpSystem = null; helpField = null; renderHelp();
+    crumbs([{ t: 'Лист героя' }]);
+    $('#view').innerHTML = `${banner()}
+      <section class="hero"><h1>Кто вы за этим столом?</h1>
+      <p>Игрок ведёт лист своего персонажа и подключается к столу мастера. Мастер ведёт игру: карта, фишки, туман, бой, кубики и журнал.</p></section>
+      <div class="roles">
+        <button class="role" data-role="player"><span class="die">лист героя</span><span class="name">Игрок</span>
+          <span class="desc">Листы персонажей D&D, GURPS и Манчкина, справка по полям, подключение к столу мастера по коду.</span></button>
+        <button class="role" data-role="gm"><span class="die">стол мастера</span><span class="name">Мастер</span>
+          <span class="desc">Сцены с картами и сеткой, фишки, туман войны, инициатива, кубики с чатом, журнал и листы игроков.</span></button>
+      </div>`;
+  }
+  function renderGM() {
+    cur = null;
+    helpSystem = null; helpField = null;
+    crumbs([{ t: 'Начало', h: '' }, { t: 'Стол мастера' }]);
+    if (tableCtl) return;
+    $('#view').innerHTML = '<div id="tableRoot"></div>';
+    tableCtl = window.RPG_TABLE_UI.mountGM($('#tableRoot'), { download: saveFile });
+  }
+  function renderJoin(msg) {
+    cur = null;
+    helpSystem = null; helpField = null; renderHelp();
+    crumbs([{ t: 'Начало', h: '' }, { t: 'Игры', h: 'games' }, { t: 'Подключение к столу' }]);
+    const U = window.RPG_TABLE_UI;
+    $('#view').innerHTML = `<section class="hero"><h1>Подключиться к столу мастера</h1>
+      <p>Попросите у мастера код стола — он виден у него вверху экрана.</p></section>
+      <form class="block join" id="joinForm" autocomplete="off">
+        <div class="f"><label for="joinName">Ваше имя за столом</label><input id="joinName" value="${esc(U.ls.get('name') || '')}" placeholder="Например, Аня" required></div>
+        <div class="f"><label for="joinCode">Код стола</label><input id="joinCode" value="${esc(U.ls.get('code') || '')}" placeholder="ABCD23" required autocapitalize="characters"></div>
+        <button class="btn primary" id="joinGo" type="submit">Подключиться</button>
+        <div class="saved" id="joinMsg" aria-live="polite">${esc(msg || '')}</div>
+      </form>`;
+    $('#joinForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = $('#joinName').value.trim(), code = $('#joinCode').value.trim();
+      if (!name || !code) { $('#joinMsg').textContent = 'Впишите имя и код.'; return; }
+      U.ls.set('name', name); U.ls.set('code', code);
+      $('#joinGo').disabled = true;
+      $('#joinMsg').textContent = 'Подключаюсь…';
+      try {
+        tableClient = await U.connectPlayer(code, name, (t) => { const m = $('#joinMsg'); if (m) m.textContent = t; });
+        go('table');
+      } catch (err) {
+        const m = $('#joinMsg'); if (m) m.textContent = err.message;
+        const b = $('#joinGo'); if (b) b.disabled = false;
+      }
+    });
+  }
+  function renderPlayerTable() {
+    cur = null;
+    helpSystem = null; helpField = null;
+    crumbs([{ t: 'Начало', h: '' }, { t: 'Игры', h: 'games' }, { t: 'Стол мастера' }]);
+    if (tableCtl) return;
+    if (!tableClient) { location.hash = 'join'; return; }
+    $('#view').innerHTML = '<div id="tableRoot"></div>';
+    tableCtl = window.RPG_TABLE_UI.mountPlayer($('#tableRoot'), tableClient, {
+      getCharacters: () => chars.filter((c) => c.system === 'dnd5e' || c.system === 'gurps4e').map((c) => ({ id: c.id, label: displayName(c) + ' — ' + gameOf(c.system).name })),
+      sheetSummary,
+      onLeave: () => { tableCtl = null; tableClient = null; go('games'); },
+    });
+  }
+  /** Краткая сводка листа для мастера. */
+  function sheetSummary(id) {
+    const c = byId(id);
+    if (!c) return null;
+    const d = c.data;
+    if (c.system === 'dnd5e') {
+      const rc = dnd.resolveClass(d);
+      return { system: 'D&D 5e', name: displayName(c), cls: rc ? rc.name : '', race: d.race === 'custom' ? d.customRace : d.race, level: RPG.util.int(d.level, 1),
+        hp: RPG.util.int(d.hpCur), hpMax: RPG.util.int(d.hpMax), ac: RPG.util.int(d.ac), speed: String(d.speed || '') + ' фт',
+        init: dnd.mod(d.dex), passive: 10 + dnd.skillBonus(d.wis, d.skills.perception >= 1, d.level, d.skills.perception === 2) };
+    }
+    const dv = gurps.derived(d);
+    return { system: 'GURPS', name: displayName(c), level: RPG.util.int(d.points), hp: RPG.util.int(d.hpCur), hpMax: dv.HP, speed: String(dv.BasicMove), init: dv.BasicSpeed };
+  }
+
   // ---------- Экран 1: выбор игры ----------
   function renderGames() {
     cur = null;
     helpSystem = null; helpField = null; renderHelp();
-    crumbs([{ t: 'Выбор игры' }]);
+    crumbs([{ t: 'Начало', h: '' }, { t: 'Выбор игры' }]);
     $('#view').innerHTML = `${banner()}
       <section class="hero"><h1>Во что играем?</h1>
       <p>Выберите систему — откроется её лист персонажа. Пояснения к полям и ссылки на правила — в справке слева.</p></section>
@@ -715,7 +912,9 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
             <span class="desc">${esc(g.desc)}</span><span class="count">${n ? `Персонажей: ${n}` : 'Пока нет персонажей'}</span></button>`;
         }).join('')}
         ${SOON.map((s) => `<button class="game" disabled><span class="die">скоро</span><span class="name">${esc(s)}</span><span class="desc">Добавим позже.</span></button>`).join('')}
-      </div>`;
+      </div>
+      <div class="block join-cta"><div><b>Играете с мастером?</b><div class="saved">Подключитесь к его столу по коду: увидите карту, бой и кубики.</div></div>
+        <button class="btn primary" data-act="join">Подключиться к столу мастера</button></div>`;
   }
 
   // ---------- Экран 2: персонажи выбранной игры ----------
@@ -724,7 +923,7 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
     cur = null;
     helpSystem = sys; helpField = null; renderHelp();
     const g = gameOf(sys);
-    crumbs([{ t: 'Игры', h: 'games' }, { t: g.name }]);
+    crumbs([{ t: 'Начало', h: '' }, { t: 'Игры', h: 'games' }, { t: g.name }]);
     const list = chars.filter((c) => c.system === sys).sort((a, b) => (b.updated || b.created) - (a.updated || a.created));
     const sub = (c) => {
       const d = c.data;
@@ -1110,12 +1309,15 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
     flashSaved(`Загружено персонажей: ${added}` + (r.skipped ? `, пропущено: ${r.skipped}` : ''));
   });
   $('#view').addEventListener('click', async (e) => {
+    if (e.target.closest('#tableRoot')) return; // у стола свои обработчики
     const t = e.target.closest('button, [data-game]');
     if (!t) return;
     if (t.dataset.help) { showHelp(t.dataset.help); return; }
     if (t.dataset.page) { setHelpOpen(true); pageClicked(t.dataset.page); return; }
     if (t.dataset.game) { go('list-' + t.dataset.game); return; }
+    if (t.dataset.role) { go(t.dataset.role === 'gm' ? 'gm' : 'games'); return; }
     const act = t.dataset.act;
+    if (act === 'join') { go('join'); return; }
     const sys = helpSystem;
     if (act === 'new') { const c = store.newCharacter(sys); chars.push(c); persist(); go('sheet-' + c.id); return; }
     if (act === 'del') { pendingDelete = t.dataset.id; renderList(sys); return; }
@@ -1149,6 +1351,9 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
     if (!list.length) { flashSaved('Пока нечего выгружать'); return; }
     const json = store.exportJSON(list);
     const name = `characters-${sys}-${new Date().toISOString().slice(0, 10)}.json`;
+    return saveFile(name, json);
+  }
+  async function saveFile(name, json) {
     const inClaude = !!(window.claude && window.claude.use);
     let dl = null;
     try { dl = inClaude ? await window.claude.use('downloads') : null; } catch (e) { dl = null; }
@@ -1170,7 +1375,7 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
     }
     const dlg = $('#dlg');
     dlg.innerHTML = `<h2>Выгрузка</h2><p>Скачать файл здесь не получилось. Скопируйте текст ниже и сохраните его в файл <b>.json</b> — потом его можно загрузить кнопкой «Загрузить файл».</p>
-      <label class="sr" for="exportText">Данные персонажей</label><textarea id="exportText" readonly>${esc(json)}</textarea>
+      <label class="sr" for="exportText">Данные</label><textarea id="exportText" readonly>${esc(json)}</textarea>
       <div class="tools"><button class="btn primary" id="copyBtn">Скопировать</button><button class="btn" id="dlgClose">Закрыть</button></div>`;
     dlg.showModal();
     $('#dlgClose').onclick = () => dlg.close();
