@@ -1,0 +1,1191 @@
+<title>Лист героя</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Макет: тёмная полка справки слева (свайп вправо / кнопка), справа — лист персонажа сеткой блоков, как бумажный лист. */
+:root {
+  --bg: #ECEFEE;
+  --surface: #FFFFFF;
+  --sunk: #F5F7F6;
+  --ink: #18211F;
+  --muted: #586663;
+  --line: #CBD4D1;
+  --accent: #8C2F39;
+  --accent-soft: #F3E3E5;
+  --gold: #8A5F0E;
+  --shelf: #1E2725;
+  --shelf-ink: #E6EDEB;
+  --shelf-muted: #A3B2AF;
+  --shelf-line: #34413E;
+  --ok: #2F6B3F;
+  --bad: #A3282F;
+  --f-display: "Alegreya SC", "Palatino Linotype", Palatino, Georgia, serif;
+  --f-body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --panel-w: 340px;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111615; --surface: #19201F; --sunk: #151B1A; --ink: #E3EBE9; --muted: #95A5A2; --line: #2D3836;
+  --accent: #E58A95; --accent-soft: #3A2226; --gold: #D9AB55; --shelf: #0B0F0E; --shelf-ink: #E3EBE9;
+  --shelf-muted: #8FA09C; --shelf-line: #26302E; --ok: #7BC48D; --bad: #F08A90; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111615; --surface: #19201F; --sunk: #151B1A; --ink: #E3EBE9; --muted: #95A5A2; --line: #2D3836;
+  --accent: #E58A95; --accent-soft: #3A2226; --gold: #D9AB55; --shelf: #0B0F0E; --shelf-ink: #E3EBE9;
+  --shelf-muted: #8FA09C; --shelf-line: #26302E; --ok: #7BC48D; --bad: #F08A90; color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.45; overflow-x: hidden; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance; margin: 0; letter-spacing: .01em; }
+
+/* ---------- Каркас ---------- */
+.topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px; min-height: 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.topbar .crumbs { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; white-space: nowrap; }
+.crumbs a { color: var(--muted); text-decoration: none; }
+.crumbs a:hover { color: var(--accent); }
+.crumbs .here { font-family: var(--f-display); font-size: 1.15rem; overflow: hidden; text-overflow: ellipsis; }
+.crumbs .sep { color: var(--line); }
+.iconbtn { border: 1px solid var(--line); background: var(--sunk); border-radius: 8px; min-width: 40px; height: 40px; padding: 0 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.iconbtn:hover { border-color: var(--accent); }
+.iconbtn .lbl { font-size: .9rem; }
+.layout { display: flex; min-height: calc(100% - 57px); }
+main { flex: 1; min-width: 0; padding-block: 20px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 18px; }
+.banner { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r); padding: 10px 14px; font-size: .95rem; }
+
+/* ---------- Полка справки ---------- */
+#help { background: var(--shelf); color: var(--shelf-ink); width: var(--panel-w); flex: 0 0 var(--panel-w); overflow-y: auto;
+  padding: 18px 18px 40px max(18px, env(safe-area-inset-left, 0px)); }
+#help a { color: #F2B8BF; }
+#help h2 { font-size: 1.35rem; }
+#help h3 { font-size: 1rem; color: var(--shelf-muted); text-transform: uppercase; letter-spacing: .08em; font-family: var(--f-body); font-weight: 700; margin: 22px 0 8px; }
+#help .field-card { background: rgba(255,255,255,.06); border: 1px solid var(--shelf-line); border-radius: var(--r); padding: 12px 14px; }
+#help .field-card { white-space: pre-line; }
+#help #stdArray { white-space: normal; display: grid; gap: 6px; }
+#help .field-card .arr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 8px 0; font-family: var(--f-num); }
+#help .field-card .arr span { background: rgba(255,255,255,.07); border-radius: 6px; padding: 4px 6px; text-align: center; }
+#help .hbtn { background: #F2B8BF; color: #1E2725; border: 0; border-radius: 8px; padding: 7px 12px; font-weight: 700; cursor: pointer; }
+#help .hbtn.ghost { background: transparent; color: var(--shelf-ink); border: 1px solid var(--shelf-line); }
+#help .field-card .t { font-family: var(--f-display); font-size: 1.15rem; margin-bottom: 4px; }
+#help .field-card.flash { animation: flash .6s ease-out; }
+@keyframes flash { from { border-color: #F2B8BF; } to { border-color: var(--shelf-line); } }
+#help ol { padding-left: 1.3em; margin: 0; display: grid; gap: 6px; }
+#help ul.links { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+#help .muted { color: var(--shelf-muted); font-size: .92rem; }
+#help .glossary { display: grid; gap: 2px; }
+#help .glossary button { text-align: left; background: none; border: 0; color: var(--shelf-ink); padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+#help .glossary button:hover, #help .glossary button[aria-current="true"] { background: rgba(255,255,255,.09); }
+#help .book-box { display: grid; gap: 8px; }
+#help .book-box .msg { color: #F2B8BF; }
+#help label.hbtn { display: inline-block; }
+#help .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+#help .tabs button { background: none; border: 1px solid var(--shelf-line); color: var(--shelf-ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+#help .tabs button[aria-pressed="true"] { background: #F2B8BF; color: #1E2725; border-color: #F2B8BF; }
+#help .badge { font-size: .72rem; font-weight: 500; border: 1px solid #F2B8BF; color: #F2B8BF; border-radius: 999px; padding: 0 6px; margin-left: 4px; vertical-align: 1px; }
+#help .refform { display: grid; gap: 4px; white-space: normal; margin-bottom: 8px; }
+#help .refform label { font-size: .8rem; color: var(--shelf-muted); margin-top: 4px; }
+#help .refform input, #help .refform select { width: 100%; box-sizing: border-box; background: rgba(255,255,255,.07); border: 1px solid var(--shelf-line); border-radius: 8px; padding: 7px 9px; color: var(--shelf-ink); }
+#help .refform select option { color: #18211F; }
+#help .refform .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#help .refform .tools { margin-top: 8px; }
+#help .refform .msg { color: #F2B8BF; }
+#help .refs { display: grid; gap: 4px; margin-top: 8px; }
+#help .ref { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,.04); }
+#help .ref .rn { font-weight: 700; }
+#help .ref .re { color: var(--shelf-muted); font-size: .86rem; grid-column: 1; }
+#help .ref .rp { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; justify-content: center; }
+#help .ref .rp button { background: none; border: 1px solid var(--shelf-line); color: #F2B8BF; border-radius: 6px; padding: 2px 8px; cursor: pointer; font-family: var(--f-num); font-size: .82rem; white-space: nowrap; }
+#help .ref .rp button:hover { border-color: #F2B8BF; }
+#viewer { width: min(96vw, 900px); max-width: none; height: min(94vh, 1200px); padding: 0; display: none; }
+#viewer[open] { display: flex; flex-direction: column; }
+#viewer::backdrop { background: rgba(0,0,0,.6); }
+.vbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.vbar input { width: 4.5em; font-family: var(--f-num); background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 5px; }
+.vinfo { flex: 1; min-width: 0; color: var(--muted); font-size: .88rem; }
+.vbody { flex: 1; overflow: auto; background: var(--sunk); display: grid; justify-items: center; align-content: start; padding: 10px; }
+.vbody canvas { max-width: 100%; height: auto; box-shadow: 0 2px 12px rgba(0,0,0,.25); background: #fff; }
+.vbody .vmsg { max-width: 50ch; padding: 20px; }
+#help input[type="search"] { width: 100%; background: rgba(255,255,255,.07); border: 1px solid var(--shelf-line); border-radius: 8px; padding: 8px 10px; color: var(--shelf-ink); }
+#help .close { float: right; background: none; border: 1px solid var(--shelf-line); color: var(--shelf-ink); border-radius: 8px; height: 36px; min-width: 36px; cursor: pointer; }
+.scrim { display: none; }
+
+@media (min-width: 1024px) {
+  body.help-closed #help { display: none; }
+  #help { position: sticky; top: calc(57px + env(safe-area-inset-top, 0px)); height: calc(100vh - 57px - env(safe-area-inset-top, 0px)); }
+}
+@media (max-width: 1023.98px) {
+  #help { position: fixed; z-index: 40; top: 0; bottom: 0; left: 0; width: min(88vw, 380px);
+    padding-top: calc(18px + env(safe-area-inset-top, 0px)); padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-102%); transition: transform .22s ease; box-shadow: 0 0 40px rgba(0,0,0,.35); }
+  body.help-open #help { transform: none; }
+  .scrim { display: block; position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.45); opacity: 0; pointer-events: none; transition: opacity .22s; }
+  body.help-open .scrim { opacity: 1; pointer-events: auto; }
+  .edge-hint { position: fixed; left: 0; top: 50%; z-index: 15; width: 6px; height: 64px; margin-top: -32px; border-radius: 0 6px 6px 0; background: var(--accent); opacity: .55; }
+}
+@media (min-width: 1024px) { .edge-hint { display: none; } }
+@media (prefers-reduced-motion: reduce) { #help, .scrim { transition: none; } #help .field-card.flash { animation: none; } }
+
+/* ---------- Выбор игры ---------- */
+.hero h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); }
+.hero p { color: var(--muted); max-width: 60ch; margin: 6px 0 0; }
+.games { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.game { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; cursor: pointer; display: grid; gap: 6px; align-content: start; }
+.game:hover:not(:disabled) { border-color: var(--accent); }
+.game .die { font-family: var(--f-num); font-size: .8rem; color: var(--accent); letter-spacing: .06em; }
+.game .name { font-family: var(--f-display); font-size: 1.4rem; }
+.game .desc { color: var(--muted); font-size: .95rem; }
+.game .count { font-size: .85rem; color: var(--gold); }
+.game:disabled { opacity: .55; cursor: default; }
+
+/* ---------- Список персонажей ---------- */
+.list-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 700; }
+.btn.danger { color: var(--bad); }
+.chars { display: grid; gap: 10px; }
+.char { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; }
+.char .info { flex: 1; min-width: 0; }
+.char .info a { font-family: var(--f-display); font-size: 1.2rem; color: var(--ink); text-decoration: none; }
+.char .info a:hover { color: var(--accent); }
+.char .sub { color: var(--muted); font-size: .92rem; }
+.empty { border: 1px dashed var(--line); border-radius: var(--r); padding: 24px; text-align: center; color: var(--muted); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Лист ---------- */
+.sheet { display: grid; gap: 16px; }
+.block { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.block > h2 { font-size: 1.05rem; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; align-items: start; }
+.fields { align-items: start; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 10px 12px; }
+.f { display: grid; gap: 3px; min-width: 0; }
+.f label, .lab { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.f input, .f select, .f textarea { width: 100%; box-sizing: border-box; background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; min-width: 0; }
+.f textarea { min-height: 96px; resize: vertical; line-height: 1.4; }
+.f input[type="number"] { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.q { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: .7rem; line-height: 1; cursor: pointer; padding: 0; display: inline-grid; place-items: center; font-family: var(--f-body); font-weight: 700; text-transform: none; letter-spacing: 0; }
+.q:hover { border-color: var(--accent); color: var(--accent); }
+.calc { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.src .pg { border: 0; background: none; color: var(--accent); text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
+#help .ref .subs { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+#help .ref .subs button { background: none; border: 0; color: #F2B8BF; cursor: pointer; font-family: var(--f-num); font-size: .78rem; padding: 0 2px; text-decoration: underline; }
+.src, .src.calc { font-family: var(--f-body); font-size: .8rem; color: var(--gold); min-height: 1.1em; }
+.src.warn { color: var(--bad); }
+.books { display: flex; flex-wrap: wrap; gap: 8px; }
+.book { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; background: var(--sunk); cursor: pointer; font-size: .9rem; }
+.book:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.book input { accent-color: var(--accent); margin: 0; }
+.book.ext { justify-self: start; width: fit-content; font-weight: 500; }
+.book:has(input:disabled) { cursor: default; }
+
+/* D&D: характеристики — крупный модификатор, значение под ним (как на бумажном листе) */
+.abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ab { border: 1px solid var(--line); border-radius: 12px 12px 30px 30px; background: var(--sunk); padding: 8px 6px 10px; display: grid; justify-items: center; gap: 4px; text-align: center; }
+.ab .lab { justify-content: center; }
+.ab .mod { font-family: var(--f-num); font-size: 1.7rem; line-height: 1.1; }
+.ab input { width: 4.2em; text-align: center; border-radius: 999px; padding: 4px; background: var(--surface); border: 1px solid var(--line); font-family: var(--f-num); }
+.stat-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat { flex: 1 1 110px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--sunk); display: grid; gap: 2px; min-width: 0; }
+.stat .v { font-family: var(--f-num); font-size: 1.35rem; }
+.stat input { width: 100%; box-sizing: border-box; font-family: var(--f-num); font-size: 1.2rem; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.checks { display: grid; gap: 2px; }
+.ck { display: grid; grid-template-columns: auto 3.2em 1fr auto; align-items: center; gap: 8px; padding: 3px 2px; border-bottom: 1px dotted var(--line); }
+.ck:last-child { border-bottom: 0; }
+.ck .val { font-family: var(--f-num); text-align: right; }
+.ck .nm { min-width: 0; }
+.ck .ab-tag { color: var(--muted); font-size: .8rem; }
+.pip { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--muted); background: transparent; cursor: pointer; padding: 0; position: relative; }
+.pip[data-state="1"] { background: var(--ink); border-color: var(--ink); }
+.pip[data-state="2"] { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
+.dots { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+/* GURPS: стоимость в квадратных скобках — так пишут на листах GURPS */
+.attrs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 520px) { .attrs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.attr { border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); padding: 8px; display: grid; gap: 4px; }
+.attr input { font-family: var(--f-num); font-size: 1.4rem; width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.cost { font-family: var(--f-num); color: var(--gold); font-size: .85rem; }
+table.sec { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.sec td, table.sec th { padding: 6px 4px; border-bottom: 1px dotted var(--line); text-align: left; }
+table.sec th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+table.sec input { width: 4.2em; font-family: var(--f-num); background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 3px 5px; }
+.table-scroll { overflow-x: auto; }
+.budget { display: flex; flex-wrap: wrap; gap: 8px 18px; font-family: var(--f-num); font-size: .92rem; }
+.budget .bad { color: var(--bad); font-weight: 700; }
+.budget .good { color: var(--ok); font-weight: 700; }
+
+/* Манчкин */
+.mk-big { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 14px; }
+.counter { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 8px; justify-items: center; text-align: center; }
+.counter .n { font-family: var(--f-num); font-size: 3rem; line-height: 1; }
+.counter .pm { display: flex; gap: 10px; }
+.counter .pm button { width: 52px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--sunk); font-size: 1.4rem; cursor: pointer; }
+.counter.total { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.counter.total .lab, .counter.total .q { color: var(--surface); border-color: var(--surface); background: transparent; }
+.win { font-family: var(--f-display); font-size: 1.1rem; color: var(--gold); }
+
+.saved { font-size: .82rem; color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+dialog { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); max-width: min(92vw, 640px); }
+dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-family: var(--f-num); font-size: .8rem; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+
+<header class="topbar">
+  <button class="iconbtn" id="helpBtn" aria-controls="help" aria-expanded="false" title="Справка (клавиша ?)">
+    <span aria-hidden="true">☰</span><span class="lbl">Справка</span>
+  </button>
+  <nav class="crumbs" id="crumbs" aria-label="Навигация"></nav>
+  <span class="saved" id="savedNote" aria-live="polite"></span>
+</header>
+<div class="scrim" id="scrim"></div>
+<div class="edge-hint" aria-hidden="true"></div>
+
+<div class="layout">
+  <aside id="help" aria-label="Справка"></aside>
+  <main><div class="wrap" id="view"></div></main>
+</div>
+
+<dialog id="dlg"></dialog>
+<dialog id="viewer" aria-label="Книга">
+  <div class="vbar">
+    <button class="btn" id="vPrev" aria-label="Предыдущая страница">‹</button>
+    <label class="sr" for="vPage">Страница книги</label>
+    <span>стр. <input id="vPage" type="number" inputmode="numeric" min="1"></span>
+    <button class="btn" id="vNext" aria-label="Следующая страница">›</button>
+    <span class="vinfo" id="vInfo"></span>
+    <button class="btn" id="vClose">Закрыть</button>
+  </div>
+  <div class="vbody" id="vBody"><canvas id="vCanvas"></canvas></div>
+</dialog>
+
+<script>/*DND5E*/</script>
+<script>/*CORE*/</script>
+<script>/*HELP*/</script>
+<script>/*GURPS*/</script>
+<script>
+(function () {
+  'use strict';
+  const { dnd, gurps, munchkin, store } = RPG;
+  const HELP = RPG_HELP;
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sign = (n) => (n >= 0 ? '+' : '−') + Math.abs(n);
+
+  const GAMES = [
+    { id: 'dnd5e', die: 'к20', name: 'D&D 5e', desc: 'Dungeons & Dragons: классы, характеристики, навыки и спасброски.' },
+    { id: 'gurps4e', die: '3к6', name: 'GURPS 4e', desc: 'Универсальная система: всё покупается очками, без классов.' },
+    { id: 'munchkin', die: 'к6', name: 'Манчкин', desc: 'Карточная пародия: уровни, шмотки и боевая сила.' },
+  ];
+  const SOON = ['Pathfinder 2e', 'Call of Cthulhu', 'Warhammer FRP'];
+
+  // ---------- Хранение ----------
+  const KEY = 'rpg-sheets.v1';
+  let storageOk = true;
+  let chars = [];
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const r = store.parseImport(raw);
+      if (r.ok) chars = r.characters;
+    }
+  } catch (e) { storageOk = false; }
+  let saveTimer = null;
+  function persist() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(KEY, store.exportJSON(chars));
+        flashSaved('Сохранено');
+      } catch (e) {
+        storageOk = false;
+        flashSaved('Не сохранено — выгрузите файл');
+      }
+    }, 300);
+  }
+  function flashSaved(t) {
+    const n = $('#savedNote');
+    n.textContent = t;
+    clearTimeout(flashSaved.t);
+    flashSaved.t = setTimeout(() => { n.textContent = ''; }, 2000);
+  }
+  const byId = (id) => chars.find((c) => c.id === id);
+  const gameOf = (id) => GAMES.find((g) => g.id === id);
+  const displayName = (c) => c.data.name || 'Безымянный герой';
+
+  // ---------- Справка ----------
+  let cur = null; // открытый лист персонажа (null — лист не открыт)
+  let helpSystem = null;
+  let helpField = null;
+  let helpQuery = '';
+  let arrayConfirm = false;
+  const isDocked = () => window.matchMedia('(min-width: 1024px)').matches;
+  function setHelpOpen(open) {
+    if (isDocked()) {
+      document.body.classList.toggle('help-closed', !open);
+      document.body.classList.remove('help-open');
+    } else {
+      document.body.classList.toggle('help-open', open);
+    }
+    $('#helpBtn').setAttribute('aria-expanded', String(open));
+    try { localStorage.setItem(KEY + '.help', open ? '1' : '0'); } catch (e) { /* не важно */ }
+  }
+  const helpIsOpen = () => (isDocked() ? !document.body.classList.contains('help-closed') : document.body.classList.contains('help-open'));
+
+  // ---------- Свои PDF книг и справочники ----------
+  const GREF = window.GURPS_REF;
+  const BOOKS = {
+    gurps4e: { key: 'gurps-basic', title: 'Книга игрока (Basic Set)', hint: 'PDF книги GURPS Basic Set (Characters)', pdfPage: (p) => RPG.gurps.pdfPage(p) },
+    dnd5e: { key: 'dnd-phb14', title: 'Книга игрока D&D (2014)', hint: 'PDF Книги игрока D&D 5e (2014) на русском', pdfPage: (p) => RPG.dnd.pdfPage(p) },
+  };
+  const bookOf = {};        // система -> { name, blob }
+  let viewSys = null;       // книга какой системы открыта в просмотре
+  let book = null;          // книга текущей системы справки (для совместимости с кодом ниже)
+  let bookMsg = '';
+  const REF_TABS = {
+    gurps4e: [['advantages', 'Преимущества'], ['disadvantages', 'Недостатки'], ['skills', 'Навыки']],
+    dnd5e: [['races', 'Расы'], ['backgrounds', 'Предыстории'], ['classes', 'Классы']],
+  };
+  let refTab = 'advantages';
+  let refQuery = '';
+  let refAdding = false;
+  let refAddErr = '';
+  function idb() {
+    return new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open('rpg-sheets', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('files');
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+  }
+  async function idbDo(mode, fn) {
+    const db = await idb();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('files', mode);
+      const req = fn(tx.objectStore('files'));
+      tx.oncomplete = () => res(req && req.result);
+      tx.onerror = () => rej(tx.error);
+    });
+  }
+  async function loadBooks() {
+    for (const [sys, b] of Object.entries(BOOKS)) {
+      try { const v = await idbDo('readonly', (st) => st.get(b.key)); if (v && v.blob) bookOf[sys] = v; } catch (e) { /* хранилище недоступно */ }
+    }
+    renderHelp();
+  }
+  async function saveBook(file) {
+    const sys = helpSystem;
+    bookOf[sys] = { name: file.name, blob: file };
+    bookMsg = '';
+    renderHelp(); // книгу можно открывать сразу, сохранение большого файла идёт в фоне
+    try { await idbDo('readwrite', (st) => st.put({ name: file.name, blob: file }, BOOKS[sys].key)); }
+    catch (e) { bookMsg = 'Книга открыта, но этот браузер не даёт её сохранить — после перезагрузки выберите файл снова.'; }
+    renderHelp();
+  }
+  async function forgetBook() {
+    const sys = helpSystem;
+    delete bookOf[sys]; bookMsg = '';
+    try { await idbDo('readwrite', (st) => st.delete(BOOKS[sys].key)); } catch (e) { /* нечего удалять */ }
+    renderHelp();
+  }
+  function bookBlock() {
+    const B = BOOKS[helpSystem];
+    if (!B) return '';
+    book = bookOf[helpSystem] || null;
+    return `<h3>${esc(B.title)}</h3><div class="book-box">
+      ${book
+        ? `<div>Открыта: <b>${esc(book.name)}</b></div>
+           <div class="tools"><button class="hbtn" data-page="1">Открыть книгу</button><button class="hbtn ghost" id="bookForget">Убрать с устройства</button></div>`
+        : `<div class="muted">Выберите ${esc(B.hint)} со своего устройства. Файл хранится только на этом устройстве и никуда не отправляется.</div>
+           <div><label class="hbtn" for="bookFile">Выбрать PDF</label><input type="file" id="bookFile" accept="application/pdf,.pdf" class="sr"></div>`}
+      ${bookMsg ? `<div class="msg" id="bookMsg">${esc(bookMsg)}</div>` : ''}
+    </div>`;
+  }
+  const pageBtns = (pages) => pages.map((p) => `<button data-page="${p}" aria-label="Открыть страницу ${p}">стр. ${p}</button>`).join('');
+  function refBlock() {
+    const TABS = REF_TABS[helpSystem];
+    if (!TABS) return '';
+    if (!TABS.some(([k]) => k === refTab)) { refTab = TABS[0][0]; refAdding = false; }
+    if (helpSystem === 'dnd5e') return dndRefBlock(TABS);
+    if (!GREF) return '';
+    const list = RPG.gurps.searchRefs(RPG.gurps.refList(GREF, cur && cur.data, refTab), refQuery);
+    const DIFF = { E: 'Л', A: 'С', H: 'Т', VH: 'ОТ', Varies: 'разн.' };
+    const own = (t) => t.custom
+      ? `<div class="ref own" data-ref="${esc(t.ru)}"><div class="rn">${esc(t.ru)} <span class="badge">своё</span></div>
+          <div class="re">${refTab === 'skills' ? `${esc(t.attr)}/${esc(t.diff)} (${DIFF[t.diff] || t.diff})` : `${esc(t.cost)} очк.`}${t.note ? ' · ' + esc(t.note) : ''}</div>
+          <div class="rp"><button data-delref="${esc(t.id)}" aria-label="Удалить «${esc(t.ru)}»">удалить</button></div></div>`
+      : null;
+    const row = (t) => own(t) || (refTab === 'skills'
+      ? `<div class="ref" data-ref="${esc(t.en)}"><div class="rn">${esc(t.ru)}${t.spec ? ' †' : ''}</div><div class="re">${esc(t.en)} · ${esc(t.attr)}/${esc(t.diff)} (${DIFF[t.diff] || t.diff})</div><div class="rp">${pageBtns([t.page])}</div></div>`
+      : `<div class="ref" data-ref="${esc(t.en)}"><div class="rn">${esc(t.ru)}</div><div class="re">${esc(t.en)} · ${esc(t.cost)} очк.</div><div class="rp">${pageBtns(t.pages)}</div></div>`);
+    const WHAT = { advantages: 'Своё преимущество', disadvantages: 'Свой недостаток', skills: 'Свой навык' };
+    const form = refAdding ? `<div class="field-card refform" id="refForm">
+        <div class="t">${WHAT[refTab]}</div>
+        <label for="refAddName">Название</label><input id="refAddName" type="text" placeholder="Например, Чутьё на золото">
+        ${refTab === 'skills'
+          ? `<div class="two"><div><label for="refAddAttr">Характеристика</label><select id="refAddAttr">${['IQ', 'DX', 'HT', 'ST', 'Will', 'Per'].map((a) => `<option>${a}</option>`).join('')}</select></div>
+             <div><label for="refAddDiff">Сложность</label><select id="refAddDiff">${['E', 'A', 'H', 'VH'].map((x) => `<option value="${x}" ${x === 'A' ? 'selected' : ''}>${DIFF[x]} (${x})</option>`).join('')}</select></div></div>`
+          : `<label for="refAddCost">Цена в очках</label><input id="refAddCost" type="text" placeholder="${refTab === 'disadvantages' ? '-10' : '5 или 5/уровень'}">`}
+        <label for="refAddNote">Что даёт (по желанию)</label><input id="refAddNote" type="text">
+        <div class="tools"><button class="hbtn" id="refAddSave">Добавить</button><button class="hbtn ghost" id="refAddCancel">Отмена</button></div>
+        ${refAddErr ? `<div class="msg">${esc(refAddErr)}</div>` : ''}
+      </div>` : '';
+    return `<h3>Справочник</h3>
+      <div class="tabs" role="group" aria-label="Раздел справочника">${TABS.map(([k, n]) => `<button data-reftab="${k}" aria-pressed="${k === refTab}">${n}</button>`).join('')}</div>
+      ${cur ? (refAdding ? form : `<button class="hbtn ghost" id="refAddBtn" style="margin-bottom:8px">+ ${WHAT[refTab]}</button>`) : ''}
+      <label class="sr" for="refSearch">Поиск в справочнике</label>
+      <input type="search" id="refSearch" placeholder="Поиск: рефлексы, combat, меч…" value="${esc(refQuery)}">
+      <p class="muted" style="margin:6px 0 0">${refTab === 'skills' ? 'Сложность: Л — лёгкий, С — средний, Т — трудный, ОТ — очень трудный. † — нужна специализация.' : 'Цена указана в очках; * — с самоконтролем 12.'} Найдено: ${list.length}.</p>
+      <div class="refs" id="refList">${list.map(row).join('') || '<p class="muted">Ничего не найдено.</p>'}</div>`;
+  }
+
+  function dndRefBlock(TABS) {
+    const R = RPG.dnd5eData.phb14;
+    let list;
+    if (refTab === 'classes') {
+      list = RPG.dnd5eData.classes.filter((c) => c.edition === '2014' && c.page)
+        .map((c) => ({ ru: c.name, page: c.page, sub: c.subclasses.filter((x) => x.page).map((x) => ({ ru: x.name, page: x.page })) }));
+    } else list = R[refTab];
+    list = RPG.gurps.searchRefs(list, refQuery);
+    const row = (t) => `<div class="ref" data-ref="${esc(t.ru)}"><div class="rn">${esc(t.ru)}</div>
+      ${t.sub && t.sub.length ? `<div class="re subs">${t.sub.map((x) => `<span>${esc(x.ru)} ${pageBtns([x.page])}</span>`).join('')}</div>` : '<div class="re"></div>'}
+      <div class="rp">${pageBtns([t.page])}</div></div>`;
+    return `<h3>Справочник Книги игрока (2014)</h3>
+      <div class="tabs" role="group" aria-label="Раздел справочника">${TABS.map(([k, n]) => `<button data-reftab="${k}" aria-pressed="${k === refTab}">${n}</button>`).join('')}</div>
+      <label class="sr" for="refSearch">Поиск в справочнике</label>
+      <input type="search" id="refSearch" placeholder="Поиск: эльф, мудрец, домен…" value="${esc(refQuery)}">
+      <p class="muted" style="margin:6px 0 0">Страницы — по русскому переводу Книги игрока 2014. Найдено: ${list.length}.</p>
+      <div class="refs" id="refList">${list.map(row).join('') || '<p class="muted">Ничего не найдено.</p>'}</div>`;
+  }
+
+  // Просмотр страницы книги (pdf.js с cdnjs, файл читается локально)
+  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  let pdfLib = null, pdfDoc = null, pdfDocOf = null, viewPage = 1;
+  function loadPdfJs() {
+    if (pdfLib) return Promise.resolve(pdfLib);
+    return new Promise((res, rej) => {
+      const sc = document.createElement('script');
+      sc.src = PDFJS + 'pdf.min.js';
+      sc.onload = () => {
+        if (!window.pdfjsLib) { rej(new Error('no pdfjs')); return; }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
+        pdfLib = window.pdfjsLib; res(pdfLib);
+      };
+      sc.onerror = () => rej(new Error('pdfjs load failed'));
+      document.head.appendChild(sc);
+    });
+  }
+  function vMsg(text) {
+    $('#vBody').innerHTML = `<div class="vmsg">${esc(text)}</div><canvas id="vCanvas" hidden></canvas>`;
+  }
+  async function openBookPage(bookPage) {
+    const v = $('#viewer');
+    viewSys = helpSystem;
+    viewPage = Math.max(1, RPG.util.int(bookPage, 1));
+    if (!v.open) v.showModal();
+    await renderBookPage();
+  }
+  async function renderBookPage() {
+    const book = bookOf[viewSys];
+    const toPdf = BOOKS[viewSys].pdfPage;
+    $('#vPage').value = viewPage;
+    $('#vInfo').textContent = book ? book.name : '';
+    try {
+      const lib = await loadPdfJs();
+      if (pdfDocOf !== book.blob) {
+        vMsg('Открываю книгу…');
+        pdfDoc = await lib.getDocument({ data: new Uint8Array(await book.blob.arrayBuffer()) }).promise;
+        pdfDocOf = book.blob;
+      }
+      const n = Math.min(pdfDoc.numPages, toPdf(viewPage));
+      const pg = await pdfDoc.getPage(n);
+      const body = $('#vBody');
+      const width = Math.min(body.clientWidth - 20, 1100);
+      const vp0 = pg.getViewport({ scale: 1 });
+      const scale = (width / vp0.width) * (window.devicePixelRatio || 1);
+      const vp = pg.getViewport({ scale });
+      body.innerHTML = '<canvas id="vCanvas"></canvas>';
+      const cv = $('#vCanvas');
+      cv.width = vp.width; cv.height = vp.height;
+      cv.style.width = Math.round(vp.width / (window.devicePixelRatio || 1)) + 'px';
+      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      body.scrollTop = 0;
+      $('#vInfo').textContent = `${book.name} · страница PDF ${n}`;
+    } catch (e) {
+      vMsg(`Не получилось показать книгу здесь. Откройте свой PDF в любой программе и перейдите на страницу ${toPdf(viewPage)} (в книге — стр. ${viewPage}).`);
+    }
+  }
+  $('#vClose').addEventListener('click', () => $('#viewer').close());
+  $('#vPrev').addEventListener('click', () => { if (viewPage > 1) { viewPage--; renderBookPage(); } });
+  $('#vNext').addEventListener('click', () => { viewPage++; renderBookPage(); });
+  $('#vPage').addEventListener('change', (e) => { viewPage = Math.max(1, RPG.util.int(e.target.value, 1)); renderBookPage(); });
+  function pageClicked(p) {
+    if (!bookOf[helpSystem]) {
+      bookMsg = `Выберите PDF книги, чтобы открыть стр. ${p}.`;
+      renderHelp();
+      const m = $('#bookMsg'); if (m) m.scrollIntoView({ block: 'center' });
+      return;
+    }
+    openBookPage(p);
+  }
+
+  let lastHelpSys = null;
+  function renderHelp() {
+    if (helpSystem !== lastHelpSys) { refQuery = ''; bookMsg = ''; refAdding = false; lastHelpSys = helpSystem; }
+    const el = $('#help');
+    const close = '<button class="close" id="helpClose" aria-label="Закрыть справку">✕</button>';
+    if (!helpSystem) {
+      el.innerHTML = close + `<h2>Справка</h2>
+        <p class="muted">Выберите игру — здесь появятся пояснения к каждому полю листа, шаги создания персонажа и ссылки на правила.</p>
+        <h3>Как открыть эту панель</h3>
+        <p class="muted">На телефоне — свайп вправо, на компьютере — кнопка «Справка» или клавиша <b>?</b>. Значок <b>?</b> рядом с полем сразу показывает пояснение к нему.</p>
+        <h3>Правила игр</h3>
+        <ul class="links">${GAMES.map((g) => HELP[g.id].links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')).join('')}</ul>`;
+    } else {
+      const h = HELP[helpSystem];
+      const onSheet = !!cur && cur.system === helpSystem;
+      let f = onSheet && helpField && h.fields[helpField];
+      const dndCls = onSheet && helpSystem === 'dnd5e' ? dnd.resolveClass(cur.data) : null;
+      if (f && helpField === 'hp' && dndCls) {
+        f = { title: f.title, text: f.text + '\n\n' + dnd.hpFormula(cur.data.edition, dndCls, cur.data.level, cur.data.con).text };
+      }
+      const links = `<h3>Где читать правила</h3>
+        <ul class="links">${h.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join('')}</ul>`;
+      let arrBlock = '';
+      if (dndCls) {
+        const a = dnd.standardArray(cur.data.edition, dndCls);
+        const NAMES = { str: 'Сил', dex: 'Лов', con: 'Тел', int: 'Инт', wis: 'Мдр', cha: 'Хар' };
+        const bonusNote = cur.data.edition === '2024'
+          ? 'Потом добавьте бонусы предыстории: +2 и +1 или +1 к трём характеристикам.'
+          : 'Потом добавьте бонусы расы (происхождения).';
+        arrBlock = `<div class="field-card" id="stdArray" style="margin:8px 0 4px">
+          <div class="t">Стандартный набор: ${esc(dndCls.name)}</div>
+          ${a ? `<div>Вместо 27 очков можно взять готовые числа 15, 14, 13, 12, 10, 8. Для этого класса удобнее так:</div>
+          <div class="arr">${dndCls.order.map((k) => `<span>${NAMES[k]} ${a[k]}</span>`).join('')}</div>`
+          : '<div>Вместо 27 очков можно взять готовые числа 15, 14, 13, 12, 10, 8. Для своего класса поставьте 15 в главную характеристику, 14 — в Телосложение, остальное по вкусу.</div>'}
+          <div class="muted" style="margin-bottom:8px">${bonusNote}</div>
+          ${!a ? '' : arrayConfirm
+            ? `<div class="confirm"><span>Заменить текущие значения?</span><button class="hbtn" id="applyArrayYes">Да</button><button class="hbtn ghost" id="applyArrayNo">Нет</button></div>`
+            : '<button class="hbtn" id="applyArray">Расставить</button>'}
+        </div>`;
+      }
+      const steps = `<h3>Как создать персонажа</h3><ol>${h.creation.map((s) => `<li>${esc(s)}${/27 очков/.test(s) ? arrBlock : ''}</li>`).join('')}</ol>`;
+      let glossary = '';
+      if (onSheet) {
+        const keys = Object.keys(h.fields).filter((k) => {
+          if (!helpQuery) return true;
+          const x = h.fields[k];
+          return (x.title + ' ' + x.text).toLowerCase().includes(helpQuery.toLowerCase());
+        });
+        glossary = `<h3>Все поля листа</h3>
+        <label class="sr" for="helpSearch">Поиск по полям</label>
+        <input type="search" id="helpSearch" placeholder="Поиск: хиты, ловкость…" value="${esc(helpQuery)}">
+        <div class="glossary" id="glossary">${keys.map((k) => `<button data-help="${esc(k)}" ${k === helpField ? 'aria-current="true"' : ''}>${esc(h.fields[k].title)}</button>`).join('') || '<p class="muted">Ничего не найдено.</p>'}</div>`;
+      }
+      el.innerHTML = close + `<h2>${esc(h.title)}</h2>
+        ${f ? `<div class="field-card flash" id="fieldCard" style="margin-top:14px"><div class="t">${esc(f.title)}</div><div>${esc(f.text)}</div></div>`
+          : (onSheet ? '<p class="muted">Нажмите <b>?</b> рядом с полем листа — здесь появится пояснение.</p>' : '')}
+        ${steps}${links}${BOOKS[helpSystem] ? bookBlock() + (onSheet ? refBlock() : '') : ''}${glossary}`;
+    }
+  }
+  function showHelp(field) {
+    helpField = field || null;
+    renderHelp();
+    setHelpOpen(true);
+    const card = $('#fieldCard');
+    if (card) { card.scrollIntoView({ block: 'nearest' }); }
+  }
+  $('#help').addEventListener('click', (e) => {
+    if (e.target.closest('#helpClose')) { setHelpOpen(false); return; }
+    if (e.target.closest('#applyArray, #applyArrayYes')) {
+      const d = cur.data;
+      const a = dnd.standardArray(d.edition, d.cls);
+      const untouched = ['str', 'dex', 'con', 'int', 'wis', 'cha'].every((k) => RPG.util.int(d[k], 10) === 10 || RPG.util.int(d[k]) === a[k]);
+      if (e.target.closest('#applyArray') && !untouched) { arrayConfirm = true; renderHelp(); return; }
+      Object.assign(d, a);
+      arrayConfirm = false;
+      renderSheet(cur); changed();
+      flashSaved('Характеристики расставлены');
+      return;
+    }
+    if (e.target.closest('#applyArrayNo')) { arrayConfirm = false; renderHelp(); return; }
+    const pb = e.target.closest('[data-page]');
+    if (pb) { pageClicked(pb.dataset.page); return; }
+    const tb = e.target.closest('[data-reftab]');
+    if (tb) { refTab = tb.dataset.reftab; refAdding = false; refAddErr = ''; renderHelp(); return; }
+    if (e.target.closest('#refAddBtn')) { refAdding = true; refAddErr = ''; renderHelp(); const n = $('#refAddName'); if (n) n.focus(); return; }
+    if (e.target.closest('#refAddCancel')) { refAdding = false; refAddErr = ''; renderHelp(); return; }
+    if (e.target.closest('#refAddSave') && cur) {
+      const val = (id) => { const el = $('#' + id); return el ? el.value : ''; };
+      const rec = RPG.gurps.addCustomRef(cur.data, refTab, { ru: val('refAddName'), cost: val('refAddCost'), note: val('refAddNote'), attr: val('refAddAttr'), diff: val('refAddDiff') });
+      if (!rec) { refAddErr = 'Впишите название.'; renderHelp(); return; }
+      refAdding = false; refAddErr = '';
+      changed(); renderHelp();
+      flashSaved('Добавлено в справочник');
+      return;
+    }
+    const del = e.target.closest('[data-delref]');
+    if (del && cur) { RPG.gurps.removeCustomRef(cur.data, refTab, del.dataset.delref); changed(); renderHelp(); return; }
+    if (e.target.closest('#bookForget')) { forgetBook(); return; }
+    const b = e.target.closest('[data-help]');
+    if (b) { helpField = b.dataset.help; renderHelp(); $('#help').scrollTop = 0; }
+  });
+  $('#help').addEventListener('input', (e) => {
+    const id = e.target.id;
+    if (id !== 'helpSearch' && id !== 'refSearch') return;
+    if (id === 'helpSearch') helpQuery = e.target.value; else refQuery = e.target.value;
+    const pos = e.target.selectionStart;
+    const top = $('#help').scrollTop;
+    renderHelp();
+    $('#help').scrollTop = top;
+    const s = $('#' + id); s.focus(); s.setSelectionRange(pos, pos);
+  });
+  $('#help').addEventListener('change', (e) => {
+    if (e.target.id !== 'bookFile') return;
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { bookMsg = 'Это не PDF. Выберите файл книги в формате PDF.'; renderHelp(); return; }
+    saveBook(f);
+  });
+  $('#helpBtn').addEventListener('click', () => setHelpOpen(!helpIsOpen()));
+  $('#scrim').addEventListener('click', () => setHelpOpen(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && helpIsOpen() && !isDocked()) setHelpOpen(false);
+    if (e.key === '?' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) { e.preventDefault(); setHelpOpen(!helpIsOpen()); }
+  });
+
+  // Свайп: вправо — открыть, влево — закрыть (только на узких экранах)
+  let touch = null;
+  document.addEventListener('touchstart', (e) => {
+    if (isDocked() || e.touches.length !== 1) { touch = null; return; }
+    const t = e.touches[0];
+    const inField = e.target.closest('input, textarea, select, .table-scroll');
+    touch = inField ? null : { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!touch) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.x, dy = t.clientY - touch.y;
+    touch = null;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    if (dx > 0 && !helpIsOpen()) setHelpOpen(true);
+    else if (dx < 0 && helpIsOpen()) setHelpOpen(false);
+  }, { passive: true });
+
+  // ---------- Маршруты ----------
+  function route() {
+    const h = location.hash.replace(/^#/, '');
+    if (h.startsWith('list-') && gameOf(h.slice(5))) return renderList(h.slice(5));
+    if (h.startsWith('sheet-') && byId(h.slice(6))) return renderSheet(byId(h.slice(6)));
+    return renderGames();
+  }
+  window.addEventListener('hashchange', route);
+  function go(h) { if (location.hash === '#' + h) route(); else location.hash = h; }
+
+  function crumbs(parts) {
+    $('#crumbs').innerHTML = parts.map((p, i) => i === parts.length - 1
+      ? `<span class="here">${esc(p.t)}</span>`
+      : `<a href="#${p.h}">${esc(p.t)}</a><span class="sep">/</span>`).join('');
+  }
+  const banner = () => (storageOk ? '' : '<div class="banner">В этом окне браузер не даёт сохранять данные. Персонажи пропадут после закрытия — выгрузите их в файл кнопкой «Выгрузить».</div>');
+
+  // ---------- Экран 1: выбор игры ----------
+  function renderGames() {
+    cur = null;
+    helpSystem = null; helpField = null; renderHelp();
+    crumbs([{ t: 'Выбор игры' }]);
+    $('#view').innerHTML = `${banner()}
+      <section class="hero"><h1>Во что играем?</h1>
+      <p>Выберите систему — откроется её лист персонажа. Пояснения к полям и ссылки на правила — в справке слева.</p></section>
+      <div class="games">
+        ${GAMES.map((g) => {
+          const n = chars.filter((c) => c.system === g.id).length;
+          return `<button class="game" data-game="${g.id}"><span class="die">${g.die}</span><span class="name">${esc(g.name)}</span>
+            <span class="desc">${esc(g.desc)}</span><span class="count">${n ? `Персонажей: ${n}` : 'Пока нет персонажей'}</span></button>`;
+        }).join('')}
+        ${SOON.map((s) => `<button class="game" disabled><span class="die">скоро</span><span class="name">${esc(s)}</span><span class="desc">Добавим позже.</span></button>`).join('')}
+      </div>`;
+  }
+
+  // ---------- Экран 2: персонажи выбранной игры ----------
+  let pendingDelete = null;
+  function renderList(sys) {
+    cur = null;
+    helpSystem = sys; helpField = null; renderHelp();
+    const g = gameOf(sys);
+    crumbs([{ t: 'Игры', h: 'games' }, { t: g.name }]);
+    const list = chars.filter((c) => c.system === sys).sort((a, b) => (b.updated || b.created) - (a.updated || a.created));
+    const sub = (c) => {
+      const d = c.data;
+      if (sys === 'dnd5e') return [d.race, d.cls, `${d.level} ур.`].filter(Boolean).join(' · ');
+      if (sys === 'gurps4e') return `${d.points} очков · осталось ${gurps.summary(d).unspent}`;
+      return `${d.level} уровень · сила ${munchkin.combatStrength(d.level, d.gear, d.bonus)}`;
+    };
+    $('#view').innerHTML = `${banner()}
+      <div class="list-head"><h1>${esc(g.name)}</h1>
+        <div class="tools"><button class="btn primary" data-act="new">+ Новый персонаж</button>
+        <button class="btn" data-act="export">Выгрузить</button>
+        <label class="btn" for="importFile">Загрузить файл</label><input type="file" id="importFile" accept=".json,application/json" class="sr"></div></div>
+      ${list.length ? `<div class="chars">${list.map((c) => `<div class="char">
+          <div class="info"><a href="#sheet-${c.id}">${esc(displayName(c))}</a><div class="sub">${esc(sub(c))}</div></div>
+          ${pendingDelete === c.id
+            ? `<div class="confirm"><span>Удалить?</span><button class="btn danger" data-act="del-yes" data-id="${c.id}">Да</button><button class="btn" data-act="del-no">Нет</button></div>`
+            : `<button class="btn danger" data-act="del" data-id="${c.id}" aria-label="Удалить ${esc(displayName(c))}">Удалить</button>`}
+        </div>`).join('')}</div>`
+        : `<div class="empty">Здесь будут ваши персонажи ${esc(g.name)}. Нажмите «Новый персонаж» — откроется пустой лист.<br>Не знаете, с чего начать? В справке есть пошаговое создание.</div>`}`;
+  }
+
+  // ---------- Экран 3: лист ----------
+  const q = (k) => `<button class="q" type="button" data-help="${k}" aria-label="Что это?">?</button>`;
+  const inp = (k, label, type = 'text', helpKey = k, extra = '') => {
+    const v = cur.data[k];
+    const id = 'f_' + k;
+    return `<div class="f"><label for="${id}">${esc(label)} ${q(helpKey)}</label>
+      <input id="${id}" data-k="${k}" type="${type}" ${type === 'number' ? 'inputmode="numeric"' : ''} value="${esc(v)}" ${extra}></div>`;
+  };
+  const area = (k, label, helpKey = k, ph = '') => `<div class="f"><label for="f_${k}">${esc(label)} ${q(helpKey)}</label>
+      <textarea id="f_${k}" data-k="${k}" placeholder="${esc(ph)}">${esc(cur.data[k])}</textarea></div>`;
+
+  const ABIL = [['str', 'Сила', 'Сил'], ['dex', 'Ловкость', 'Лов'], ['con', 'Телосложение', 'Тел'], ['int', 'Интеллект', 'Инт'], ['wis', 'Мудрость', 'Мдр'], ['cha', 'Харизма', 'Хар']];
+  const ABBR_TO_KEY = { 'Сил': 'str', 'Лов': 'dex', 'Тел': 'con', 'Инт': 'int', 'Мдр': 'wis', 'Хар': 'cha' };
+
+  const D5 = RPG.dnd5eData;
+  function classOptions() {
+    const d = cur.data;
+    const avail = dnd.availableClasses(d.edition, dnd.effectiveBooks(d));
+    let html = '<option value="">— выберите класс —</option>'
+      + avail.map((c) => `<option value="${c.id}" ${d.cls === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+    const known = dnd.findClass(d.edition, d.cls);
+    if (known && !avail.includes(known)) html += `<option value="${known.id}" selected>${esc(known.name)} (книга не отмечена)</option>`;
+    html += `<option value="custom" ${d.cls === 'custom' ? 'selected' : ''}>Свой вариант…</option>`;
+    return html;
+  }
+  function subclassOptions() {
+    const d = cur.data;
+    const avail = dnd.availableSubclasses(d.edition, d.cls, dnd.effectiveBooks(d));
+    let html = '<option value="">— не выбран —</option>'
+      + avail.map((s) => `<option value="${esc(s.name)}" ${d.subclass === s.name ? 'selected' : ''}>${esc(s.name)} — ${esc(dnd.sourceLabel(s.books))}</option>`).join('');
+    if (d.subclass && d.subclass !== 'custom' && !avail.some((s) => s.name === d.subclass)) html += `<option value="${esc(d.subclass)}" selected>${esc(d.subclass)} (книга не отмечена)</option>`;
+    html += `<option value="custom" ${d.subclass === 'custom' ? 'selected' : ''}>Свой вариант…</option>`;
+    return html;
+  }
+  function raceOptions() {
+    const d = cur.data;
+    const avail = dnd.availableRaces(d.edition, dnd.effectiveBooks(d));
+    let html = '<option value="">— выберите —</option>'
+      + avail.map((r) => `<option value="${esc(r.name)}" ${d.race === r.name ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+    if (d.race && d.race !== 'custom' && !avail.some((r) => r.name === d.race)) html += `<option value="${esc(d.race)}" selected>${esc(d.race)} (книга не отмечена)</option>`;
+    return html + `<option value="custom" ${d.race === 'custom' ? 'selected' : ''}>Свой вариант…</option>`;
+  }
+  function raceSubField() {
+    const d = cur.data;
+    const r = d.race && d.race !== 'custom' ? dnd.findRace(d.edition, d.race) : null;
+    if (!r || !r.subs.length) return '';
+    const avail = (dnd.availableRaces(d.edition, dnd.effectiveBooks(d)).find((x) => x.name === r.name) || { subs: [] }).subs;
+    let html = '<option value="">— не выбрана —</option>'
+      + avail.map((x) => `<option value="${esc(x.name)}" ${d.raceSub === x.name ? 'selected' : ''}>${esc(x.name)} — ${esc(dnd.sourceLabel(x.books))}</option>`).join('');
+    if (d.raceSub && !avail.some((x) => x.name === d.raceSub)) html += `<option value="${esc(d.raceSub)}" selected>${esc(d.raceSub)} (книга не отмечена)</option>`;
+    return `<div class="f"><label for="f_raceSub">Разновидность ${q('raceSub')}</label>
+      <select id="f_raceSub" data-sel="raceSub">${html}</select><span class="src calc" data-calc="source:raceSub"></span></div>`;
+  }
+  function backgroundOptions() {
+    const d = cur.data;
+    const avail = dnd.availableBackgrounds(d.edition, dnd.effectiveBooks(d));
+    let html = '<option value="">— выберите —</option>'
+      + avail.map((b) => `<option value="${esc(b.name)}" ${d.background === b.name ? 'selected' : ''}>${esc(b.name)}</option>`).join('');
+    if (d.background && d.background !== 'custom' && !avail.some((b) => b.name === d.background)) html += `<option value="${esc(d.background)}" selected>${esc(d.background)} (книга не отмечена)</option>`;
+    return html + `<option value="custom" ${d.background === 'custom' ? 'selected' : ''}>Свой вариант…</option>`;
+  }
+  function sourceOfItem(item) {
+    const d = cur.data;
+    const books = (item && item.books) || [];
+    if (!books.length) return { text: '', warn: false };
+    const ok = books.some((b) => dnd.effectiveBooks(d).includes(b));
+    return { text: 'Источник: ' + dnd.sourceLabel(books) + (ok ? '' : ' — книга не отмечена'), warn: !ok,
+      page: books.includes('PHB14') ? item.page : undefined };
+  }
+  function sourceOf(kind) {
+    const d = cur.data;
+    if (kind === 'race' || kind === 'raceSub') {
+      if (d.race === 'custom') return kind === 'race' ? { text: 'Источник: Домашнее правило', warn: false } : { text: '', warn: false };
+      const r = dnd.findRace(d.edition, d.race);
+      if (!r) return { text: '', warn: false };
+      if (kind === 'race') return sourceOfItem(r.books.length ? r : { books: [] });
+      return sourceOfItem(r.subs.find((x) => x.name === d.raceSub));
+    }
+    if (kind === 'background') {
+      if (d.background === 'custom') return { text: 'Источник: Домашнее правило', warn: false };
+      return sourceOfItem(dnd.findBackground(d.edition, d.background));
+    }
+    const c = dnd.resolveClass(d);
+    if (!c) return { text: '', warn: false };
+    if ((kind === 'cls' && c.custom) || (kind === 'subclass' && d.subclass === 'custom')) return { text: 'Источник: Домашнее правило', warn: false };
+    const item = kind === 'cls' ? c : (c.subclasses.find((s) => s.name === d.subclass) || {});
+    const books = item.books || [];
+    if (!books.length) return { text: '', warn: false };
+    const ok = books.some((b) => dnd.effectiveBooks(d).includes(b));
+    return { text: 'Источник: ' + dnd.sourceLabel(books) + (ok ? '' : ' — книга не отмечена'), warn: !ok, page: item.page };
+  }
+
+  function sheetDnd() {
+    const d = cur.data;
+    return `
+      <section class="block"><h2>Редакция и книги</h2>
+        <div class="fields">
+          <div class="f"><label for="f_edition">Редакция ${q('edition')}</label>
+            <select id="f_edition" data-sel="edition">${Object.entries(D5.editions).map(([v, t]) => `<option value="${v}" ${d.edition === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+        </div>
+        <div class="lab">Книги ${q('books')}</div>
+        <label class="book ext"><input type="checkbox" id="f_extended" data-ext="1" ${d.extended ? 'checked' : ''}> Расширенный набор — дополнительные книги</label>
+        <div class="books">${Object.entries(D5.books).filter(([, b]) => b.edition === d.edition && (b.core || d.extended)).map(([id, b]) => `<label class="book">
+          <input type="checkbox" data-book="${id}" ${d.books.includes(id) || b.core ? 'checked' : ''} ${b.core ? 'disabled' : ''}> ${esc(b.name)}</label>`).join('')}</div>
+      </section>
+      <section class="block"><h2>Персонаж</h2><div class="fields">
+        ${inp('name', 'Имя')}
+        <div class="f"><label for="f_cls">Класс ${q('cls')}</label>
+          <select id="f_cls" data-sel="cls">${classOptions()}</select><span class="src calc" data-calc="source:cls"></span></div>
+        ${d.cls === 'custom' ? `${inp('customCls', 'Название класса', 'text', 'customCls', 'placeholder="Например, Кровавый охотник"')}
+          <div class="f"><label for="f_customHitDie">Кость хитов класса ${q('customCls')}</label>
+            <select id="f_customHitDie" data-k="customHitDie">${[6, 8, 10, 12].map((n) => `<option value="${n}" ${RPG.util.int(d.customHitDie, 8) === n ? 'selected' : ''}>к${n}</option>`).join('')}</select></div>` : ''}
+        <div class="f"><label for="f_subclass">Подкласс ${q('subclass')}</label>
+          <select id="f_subclass" data-sel="subclass" ${dnd.resolveClass(d) ? '' : 'disabled'}>${subclassOptions()}</select><span class="src calc" data-calc="source:subclass"></span></div>
+        ${d.subclass === 'custom' ? inp('customSubclass', 'Название подкласса', 'text', 'subclass', 'placeholder="Например, Орден мутантов"') : ''}
+        ${inp('level', 'Уровень', 'number', 'level', 'min="1" max="20"')}
+        <div class="f"><label for="f_race">Происхождение ${q('race')}</label>
+          <select id="f_race" data-sel="race">${raceOptions()}</select><span class="src calc" data-calc="source:race"></span></div>
+        ${d.race === 'custom' ? inp('customRace', 'Своё происхождение', 'text', 'race', 'placeholder="Например, Кот-воин"') : ''}
+        ${raceSubField()}
+        <div class="f"><label for="f_background">Предыстория ${q('background')}</label>
+          <select id="f_background" data-sel="background">${backgroundOptions()}</select><span class="src calc" data-calc="source:background"></span></div>
+        ${d.background === 'custom' ? inp('customBackground', 'Своя предыстория', 'text', 'background', 'placeholder="Например, Пекарь"') : ''}
+        ${inp('alignment', 'Мировоззрение')}
+        ${inp('xp', 'Опыт', 'number')}${inp('player', 'Игрок', 'text', 'player')}
+      </div></section>
+      <section class="block"><h2>Характеристики ${q('abilities')}</h2>
+        <div class="abilities">${ABIL.map(([k, n, a]) => `<div class="ab"><span class="lab">${a} ${q(k)}</span>
+          <span class="mod calc" data-calc="mod:${k}"></span>
+          <label class="sr" for="f_${k}">${n}</label><input id="f_${k}" data-k="${k}" type="number" inputmode="numeric" min="1" max="30" value="${esc(d[k])}"></div>`).join('')}</div>
+        <div class="stat-row">
+          <div class="stat"><span class="lab">Бонус мастерства ${q('prof')}</span><span class="v calc" data-calc="prof"></span></div>
+          <div class="stat"><span class="lab">Пассивная Внимат. ${q('passive')}</span><span class="v calc" data-calc="passive"></span></div>
+          <div class="stat"><span class="lab">Вдохновение ${q('inspiration')}</span><span class="dots"><button class="pip" type="button" data-toggle="inspiration" data-state="${d.inspiration ? 1 : 0}" aria-label="Вдохновение"></button></span></div>
+        </div>
+      </section>
+      <div class="grid-2">
+        <section class="block"><h2>Спасброски ${q('saves')}</h2><div class="checks">
+          ${ABIL.map(([k, n]) => `<div class="ck"><button class="pip" type="button" data-save="${k}" data-state="${d.saves[k] ? 1 : 0}" aria-label="Владение спасброском: ${n}"></button>
+            <span class="val calc" data-calc="save:${k}"></span><span class="nm">${n}</span><span></span></div>`).join('')}
+        </div></section>
+        <section class="block"><h2>Бой</h2><div class="stat-row">
+          <div class="stat"><label class="lab" for="f_ac">КД ${q('ac')}</label><input id="f_ac" data-k="ac" type="number" inputmode="numeric" value="${esc(d.ac)}"></div>
+          <div class="stat"><span class="lab">Инициатива ${q('initiative')}</span><span class="v calc" data-calc="init"></span></div>
+          <div class="stat"><label class="lab" for="f_speed">Скорость, фт ${q('speed')}</label><input id="f_speed" data-k="speed" type="number" inputmode="numeric" value="${esc(d.speed)}"></div>
+        </div><div class="stat-row">
+          <div class="stat" data-hp-tip><label class="lab" for="f_hpCur">Хиты ${q('hp')}</label><input id="f_hpCur" data-k="hpCur" type="number" inputmode="numeric" value="${esc(d.hpCur)}"></div>
+          <div class="stat" data-hp-tip><label class="lab" for="f_hpMax">Максимум ${q('hp')}</label><input id="f_hpMax" data-k="hpMax" type="number" inputmode="numeric" value="${esc(d.hpMax)}"></div>
+          <div class="stat"><label class="lab" for="f_hpTemp">Временные ${q('hp')}</label><input id="f_hpTemp" data-k="hpTemp" type="number" inputmode="numeric" value="${esc(d.hpTemp)}"></div>
+        </div><div class="stat-row">
+          ${dnd.resolveClass(d)
+            ? `<div class="stat"><span class="lab">Кости хитов ${q('hitDice')}</span><span class="v calc" data-calc="hitDice"></span></div>`
+            : `<div class="stat"><label class="lab" for="f_hitDice">Кости хитов ${q('hitDice')}</label><input id="f_hitDice" data-k="hitDice" value="${esc(d.hitDice)}" placeholder="выберите класс"></div>`}
+          <div class="stat"><span class="lab">Спасброски от смерти ${q('death')}</span>
+            <span class="dots">успех ${[1, 2, 3].map((i) => `<button class="pip" type="button" data-death="deathOk" data-i="${i}" data-state="${d.deathOk >= i ? 1 : 0}" aria-label="Успех ${i}"></button>`).join('')}</span>
+            <span class="dots">провал ${[1, 2, 3].map((i) => `<button class="pip" type="button" data-death="deathFail" data-i="${i}" data-state="${d.deathFail >= i ? 2 : 0}" aria-label="Провал ${i}"></button>`).join('')}</span></div>
+        </div></section>
+      </div>
+      <section class="block"><h2>Навыки ${q('skills')}</h2><div class="checks" style="columns: 2 280px; column-gap: 24px; display:block">
+        ${store.DND_SKILLS.map((k) => {
+          const [ru, ab] = HELP.DND_SKILLS[k];
+          return `<div class="ck" style="break-inside: avoid"><button class="pip" type="button" data-skill="${k}" data-state="${d.skills[k] || 0}" aria-label="Владение: ${ru}"></button>
+            <span class="val calc" data-calc="skill:${k}"></span><span class="nm">${ru} <span class="ab-tag">${ab}</span></span>${q('skill_' + k)}</div>`;
+        }).join('')}
+      </div><p class="saved">Кружок: пустой — нет владения, чёрный — владение, красный — компетентность.</p></section>
+      <div class="grid-2">
+        <section class="block">${area('attacks', 'Атаки и заклинания', 'attacks', 'Длинный меч +5, 1к8+3 рубящий')}</section>
+        <section class="block">${area('equipment', 'Снаряжение и деньги')}</section>
+        <section class="block">${area('proficiencies', 'Владения и языки')}</section>
+        <section class="block">${area('features', 'Умения и черты')}</section>
+      </div>
+      <section class="block"><h2>Личность ${q('personality')}</h2><div class="grid-2">
+        ${area('traits', 'Черты характера', 'personality')}${area('ideals', 'Идеалы', 'personality')}
+        ${area('bonds', 'Привязанности', 'personality')}${area('flaws', 'Слабости', 'personality')}
+      </div></section>
+      <section class="block">${area('notes', 'Заметки')}</section>`;
+  }
+
+  function sheetGurps() {
+    const d = cur.data;
+    const sec = [['HP', 'Хиты (HP)', 'hpMod', 2], ['Will', 'Воля', 'willMod', 5], ['Per', 'Восприятие', 'perMod', 5], ['FP', 'Усталость (FP)', 'fpMod', 3], ['BasicSpeed', 'Базовая скорость', 'speedMod', null], ['BasicMove', 'Базовое движение', 'moveMod', 5]];
+    return `
+      <section class="block"><h2>Персонаж</h2><div class="fields">
+        ${inp('name', 'Имя')}${inp('player', 'Игрок', 'text', 'player')}${inp('points', 'Всего очков', 'number')}
+        ${inp('tl', 'TL', 'number')}${inp('sm', 'SM', 'number')}
+      </div>
+      <div class="budget" data-calc="budget"></div></section>
+      <section class="block"><h2>Основные характеристики</h2><div class="attrs">
+        ${[['ST', 'Сила'], ['DX', 'Ловкость'], ['IQ', 'Интеллект'], ['HT', 'Здоровье']].map(([k, n]) => `<div class="attr">
+          <label class="lab" for="f_${k}">${k} · ${n} ${q(k)}</label>
+          <input id="f_${k}" data-k="${k}" type="number" inputmode="numeric" value="${esc(d[k])}">
+          <span class="cost calc" data-calc="cost:${k}"></span></div>`).join('')}
+      </div></section>
+      <div class="grid-2">
+        <section class="block"><h2>Вторичные характеристики</h2><div class="table-scroll"><table class="sec">
+          <thead><tr><th>Параметр</th><th>Значение</th><th>Доп. уровни</th><th>Цена</th></tr></thead><tbody>
+          ${sec.map(([k, n, m]) => `<tr><td>${n} ${q(k)}</td><td class="calc" data-calc="g:${k}"></td>
+            <td><label class="sr" for="f_${m}">${n}: доп. уровни</label><input id="f_${m}" data-k="${m}" type="number" ${m === 'speedMod' ? 'step="0.25"' : ''} inputmode="decimal" value="${esc(d[m])}"></td>
+            <td class="cost calc" data-calc="mcost:${m}"></td></tr>`).join('')}
+          <tr><td>Уклонение ${q('Dodge')}</td><td class="calc" data-calc="g:Dodge"></td><td></td><td></td></tr>
+          <tr><td>Базовый подъём ${q('BasicLift')}</td><td class="calc" data-calc="g:BasicLift"></td><td></td><td></td></tr>
+          </tbody></table></div></section>
+        <section class="block"><h2>Текущее состояние</h2><div class="stat-row">
+          <div class="stat"><label class="lab" for="f_hpCur">Текущие HP ${q('HP')}</label><input id="f_hpCur" data-k="hpCur" type="number" inputmode="numeric" value="${esc(d.hpCur)}"><span class="saved">из <span class="calc" data-calc="g:HP"></span></span></div>
+          <div class="stat"><label class="lab" for="f_fpCur">Текущие FP ${q('FP')}</label><input id="f_fpCur" data-k="fpCur" type="number" inputmode="numeric" value="${esc(d.fpCur)}"><span class="saved">из <span class="calc" data-calc="g:FP"></span></span></div>
+        </div></section>
+      </div>
+      <div class="grid-2">
+        <section class="block">${area('advantages', 'Преимущества', 'advantages', 'Боевые рефлексы [15]')}${inp('advPoints', 'Очки за преимущества', 'number', 'advantages')}</section>
+        <section class="block">${area('disadvantages', 'Недостатки', 'disadvantages', 'Кодекс чести (пиратский) [-5]')}${inp('disadvPoints', 'Очки за недостатки', 'number', 'disadvantages')}</section>
+        <section class="block">${area('skills', 'Навыки', 'skills', 'Меч (DX/С) — 14 [8]')}${inp('skillPoints', 'Очки за навыки', 'number', 'skills')}</section>
+        <section class="block">${area('equipment', 'Снаряжение')}</section>
+      </div>
+      <section class="block">${area('notes', 'Заметки')}</section>`;
+  }
+
+  function sheetMunchkin() {
+    return `
+      <section class="block"><h2>Манчкин</h2><div class="fields">
+        ${inp('name', 'Имя')}${inp('race', 'Раса')}${inp('cls', 'Класс', 'text', 'cls')}${inp('sex', 'Пол')}
+      </div></section>
+      <div class="mk-big">
+        ${[['level', 'Уровень'], ['gear', 'Шмотки'], ['bonus', 'Разовый бонус']].map(([k, n]) => `<div class="counter">
+          <span class="lab">${n} ${q(k)}</span><span class="n calc" data-calc="mk:${k}"></span>
+          <div class="pm"><button type="button" data-step="${k}" data-d="-1" aria-label="${n}: минус 1">−</button><button type="button" data-step="${k}" data-d="1" aria-label="${n}: плюс 1">+</button></div></div>`).join('')}
+        <div class="counter total"><span class="lab">Боевая сила ${q('combat')}</span><span class="n calc" data-calc="mk:combat"></span>
+          <span class="win calc" data-calc="mk:win"></span></div>
+      </div>
+      <div class="tools"><button class="btn" data-act="mk-reset-bonus">Сбросить разовый бонус</button></div>
+      <section class="block">${area('notes', 'Заметки')}</section>`;
+  }
+
+  function renderSheet(c) {
+    cur = c;
+    helpSystem = c.system;
+    if (helpField && !HELP[c.system].fields[helpField]) helpField = null;
+    renderHelp();
+    const g = gameOf(c.system);
+    crumbs([{ t: 'Игры', h: 'games' }, { t: g.name, h: 'list-' + c.system }, { t: displayName(c) }]);
+    const body = c.system === 'dnd5e' ? sheetDnd() : c.system === 'gurps4e' ? sheetGurps() : sheetMunchkin();
+    $('#view').innerHTML = banner() + `<div class="sheet" id="sheet">${body}</div>`;
+    updateCalcs();
+  }
+
+  function updateCalcs() {
+    if (!cur) return;
+    const d = cur.data;
+    const set = (key, text) => document.querySelectorAll(`[data-calc="${key}"]`).forEach((n) => { n.textContent = text; });
+    if (cur.system === 'dnd5e') {
+      ABIL.forEach(([k]) => {
+        set('mod:' + k, sign(dnd.mod(d[k])));
+        set('save:' + k, sign(dnd.skillBonus(d[k], d.saves[k], d.level)));
+      });
+      set('prof', sign(dnd.profBonus(d.level)));
+      set('init', sign(dnd.mod(d.dex)));
+      ['cls', 'subclass', 'race', 'raceSub', 'background'].forEach((k) => {
+        const s = sourceOf(k);
+        document.querySelectorAll(`[data-calc="source:${k}"]`).forEach((n) => {
+          n.innerHTML = esc(s.text) + (s.page ? `, <button type="button" class="pg" data-page="${s.page}" aria-label="Открыть Книгу игрока на странице ${s.page}">стр. ${s.page}</button>` : '');
+          n.classList.toggle('warn', s.warn);
+        });
+      });
+      const rc = dnd.resolveClass(d);
+      const hd = rc ? dnd.hitDiceText(d.edition, rc, d.level) : '';
+      if (hd) { set('hitDice', hd); d.hitDice = hd; }
+      const hp = rc ? dnd.hpFormula(d.edition, rc, d.level, d.con) : null;
+      document.querySelectorAll('[data-hp-tip]').forEach((n) => { n.title = hp ? hp.text : 'Выберите класс — здесь появится, как считаются хиты.'; });
+      if (helpField === 'hp' && helpIsOpen()) renderHelp();
+      set('passive', String(10 + dnd.skillBonus(d.wis, d.skills.perception >= 1, d.level, d.skills.perception === 2)));
+      store.DND_SKILLS.forEach((k) => {
+        const ab = ABBR_TO_KEY[HELP.DND_SKILLS[k][1]];
+        set('skill:' + k, sign(dnd.skillBonus(d[ab], d.skills[k] >= 1, d.level, d.skills[k] === 2)));
+      });
+    } else if (cur.system === 'gurps4e') {
+      const dv = gurps.derived(d);
+      const s = gurps.summary(d);
+      Object.entries(dv).forEach(([k, v]) => set('g:' + k, String(v).replace('.', ',')));
+      [['ST', 10], ['DX', 20], ['IQ', 20], ['HT', 10]].forEach(([k, per]) => set('cost:' + k, `[${(RPG.util.int(d[k], 10) - 10) * per}]`));
+      const mc = { hpMod: 2, willMod: 5, perMod: 5, fpMod: 3, moveMod: 5 };
+      Object.entries(mc).forEach(([k, per]) => set('mcost:' + k, `[${RPG.util.int(d[k]) * per}]`));
+      set('mcost:speedMod', `[${Math.round(RPG.util.num(d.speedMod) / 0.25) * 5}]`);
+      const b = document.querySelector('[data-calc="budget"]');
+      if (b) {
+        b.innerHTML = `<span>Характеристики [${s.attributes}]</span><span>Вторичные [${s.secondary}]</span><span>Преимущества [${s.adv}]</span>
+          <span>Недостатки [${s.disadv}]</span><span>Навыки [${s.skills}]</span>
+          <span>Осталось очков: <b class="${s.unspent < 0 ? 'bad' : 'good'}">${s.unspent}</b> <button class="q" type="button" data-help="unspent" aria-label="Что это?">?</button></span>`;
+      }
+    } else {
+      set('mk:level', String(d.level));
+      set('mk:gear', String(d.gear));
+      set('mk:bonus', sign(RPG.util.int(d.bonus)));
+      set('mk:combat', String(munchkin.combatStrength(d.level, d.gear, d.bonus)));
+      set('mk:win', munchkin.isWinner(d.level) ? 'Победа! 10-й уровень' : `До победы: ${10 - d.level} ур.`);
+    }
+  }
+
+  function changed() {
+    cur.updated = Date.now();
+    updateCalcs();
+    persist();
+    const here = document.querySelector('.crumbs .here');
+    if (here) here.textContent = displayName(cur);
+  }
+
+  // ---------- События листа и списков ----------
+  $('#view').addEventListener('input', (e) => {
+    const el = e.target;
+    if (!cur || !el.dataset.k) return;
+    const k = el.dataset.k;
+    cur.data[k] = el.type === 'number' ? (el.value === '' ? '' : RPG.util.num(el.value)) : el.value;
+    changed();
+  });
+  $('#view').addEventListener('change', async (e) => {
+    const el = e.target;
+    if (cur && cur.system === 'dnd5e' && (el.dataset.sel || el.dataset.book || el.dataset.ext)) {
+      const d = cur.data;
+      if (el.dataset.ext) {
+        d.extended = el.checked; // отмеченные дополнения запоминаются, но в стандартном режиме не учитываются
+      } else if (el.dataset.sel === 'edition') {
+        d.edition = el.value;
+        d.books = Object.keys(D5.books).filter((b) => D5.books[b].edition === d.edition && D5.books[b].core);
+        const c = dnd.findClass(d.edition, d.cls);
+        if (d.subclass !== 'custom' && (!c || !c.subclasses.some((s) => s.name === d.subclass))) d.subclass = '';
+        const r = dnd.findRace(d.edition, d.race);
+        if (d.race !== 'custom' && !r) { d.race = ''; d.raceSub = ''; }
+        if (r && !r.subs.some((x) => x.name === d.raceSub)) d.raceSub = '';
+        if (d.background !== 'custom' && !dnd.findBackground(d.edition, d.background)) d.background = '';
+      } else if (el.dataset.sel === 'cls') {
+        d.cls = el.value;
+        d.subclass = '';
+      } else if (el.dataset.sel === 'race') {
+        d.race = el.value; d.raceSub = '';
+      } else if (el.dataset.sel === 'raceSub') {
+        d.raceSub = el.value;
+      } else if (el.dataset.sel === 'background') {
+        d.background = el.value;
+      } else if (el.dataset.sel === 'subclass') {
+        d.subclass = el.value;
+      } else if (el.dataset.book) {
+        const set = new Set(d.books);
+        if (el.checked) set.add(el.dataset.book); else set.delete(el.dataset.book);
+        d.books = Object.keys(D5.books).filter((b) => set.has(b) || (D5.books[b].core && D5.books[b].edition === d.edition));
+      }
+      arrayConfirm = false;
+      const y = window.scrollY;
+      renderSheet(cur);
+      window.scrollTo(0, y);
+      const again = el.dataset.ext ? $('#f_extended') : el.dataset.book ? document.querySelector(`[data-book="${el.dataset.book}"]`) : document.querySelector(`[data-sel="${el.dataset.sel}"]`);
+      if (again) again.focus();
+      changed();
+      return;
+    }
+    if (el.id !== 'importFile') return;
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const r = store.parseImport(await file.text());
+    if (!r.ok) { flashSaved(r.error); return; }
+    let added = 0;
+    r.characters.forEach((c) => { if (!byId(c.id)) { chars.push(c); added++; } });
+    persist();
+    route();
+    flashSaved(`Загружено персонажей: ${added}` + (r.skipped ? `, пропущено: ${r.skipped}` : ''));
+  });
+  $('#view').addEventListener('click', async (e) => {
+    const t = e.target.closest('button, [data-game]');
+    if (!t) return;
+    if (t.dataset.help) { showHelp(t.dataset.help); return; }
+    if (t.dataset.page) { setHelpOpen(true); pageClicked(t.dataset.page); return; }
+    if (t.dataset.game) { go('list-' + t.dataset.game); return; }
+    const act = t.dataset.act;
+    const sys = helpSystem;
+    if (act === 'new') { const c = store.newCharacter(sys); chars.push(c); persist(); go('sheet-' + c.id); return; }
+    if (act === 'del') { pendingDelete = t.dataset.id; renderList(sys); return; }
+    if (act === 'del-no') { pendingDelete = null; renderList(sys); return; }
+    if (act === 'del-yes') { chars = chars.filter((c) => c.id !== t.dataset.id); pendingDelete = null; persist(); renderList(sys); return; }
+    if (act === 'export') { exportFile(); return; }
+    if (act === 'mk-reset-bonus') { cur.data.bonus = 0; changed(); return; }
+    if (!cur) return;
+    const d = cur.data;
+    if (t.dataset.save) { d.saves[t.dataset.save] = !d.saves[t.dataset.save]; t.dataset.state = d.saves[t.dataset.save] ? 1 : 0; changed(); }
+    else if (t.dataset.skill) { const k = t.dataset.skill; d.skills[k] = ((d.skills[k] || 0) + 1) % 3; t.dataset.state = d.skills[k]; changed(); }
+    else if (t.dataset.toggle) { d[t.dataset.toggle] = !d[t.dataset.toggle]; t.dataset.state = d[t.dataset.toggle] ? 1 : 0; changed(); }
+    else if (t.dataset.death) {
+      const k = t.dataset.death, i = Number(t.dataset.i);
+      d[k] = d[k] === i ? i - 1 : i;
+      document.querySelectorAll(`[data-death="${k}"]`).forEach((p) => { p.dataset.state = d[k] >= Number(p.dataset.i) ? (k === 'deathOk' ? 1 : 2) : 0; });
+      changed();
+    } else if (t.dataset.step) {
+      const k = t.dataset.step, dd = Number(t.dataset.d);
+      let v = RPG.util.int(d[k]) + dd;
+      if (k === 'level') v = munchkin.clampLevel(v);
+      if (k === 'gear') v = Math.max(0, v);
+      d[k] = v; changed();
+    }
+  });
+
+  // ---------- Выгрузка ----------
+  async function exportFile() {
+    const sys = helpSystem;
+    const list = chars.filter((c) => c.system === sys);
+    if (!list.length) { flashSaved('Пока нечего выгружать'); return; }
+    const json = store.exportJSON(list);
+    const name = `characters-${sys}-${new Date().toISOString().slice(0, 10)}.json`;
+    const inClaude = !!(window.claude && window.claude.use);
+    let dl = null;
+    try { dl = inClaude ? await window.claude.use('downloads') : null; } catch (e) { dl = null; }
+    if (dl) {
+      try { await dl.save({ filename: name, data: json }); flashSaved('Файл сохранён'); return; }
+      catch (err) { if (err && err.code === 'declined') return; }
+    }
+    if (!inClaude) {
+      // Открыто как обычная страница или файл (например, из Telegram): скачиваем как обычный файл.
+      try {
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = name; a.rel = 'noopener';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        flashSaved('Файл сохраняется в «Загрузки»');
+        return;
+      } catch (e) { /* ниже — запасной вариант */ }
+    }
+    const dlg = $('#dlg');
+    dlg.innerHTML = `<h2>Выгрузка</h2><p>Скачать файл здесь не получилось. Скопируйте текст ниже и сохраните его в файл <b>.json</b> — потом его можно загрузить кнопкой «Загрузить файл».</p>
+      <label class="sr" for="exportText">Данные персонажей</label><textarea id="exportText" readonly>${esc(json)}</textarea>
+      <div class="tools"><button class="btn primary" id="copyBtn">Скопировать</button><button class="btn" id="dlgClose">Закрыть</button></div>`;
+    dlg.showModal();
+    $('#dlgClose').onclick = () => dlg.close();
+    $('#copyBtn').onclick = async () => {
+      try { await navigator.clipboard.writeText(json); $('#copyBtn').textContent = 'Скопировано'; }
+      catch (e) { const ta = $('#exportText'); ta.focus(); ta.select(); }
+    };
+  }
+
+  // ---------- Старт ----------
+  let helpPref = null;
+  try { helpPref = localStorage.getItem(KEY + '.help'); } catch (e) { /* нет хранилища */ }
+  setHelpOpen(isDocked() ? helpPref !== '0' : false);
+  loadBooks();
+  window.matchMedia('(min-width: 1024px)').addEventListener('change', () => setHelpOpen(isDocked()));
+  route();
+})();
+</script>
