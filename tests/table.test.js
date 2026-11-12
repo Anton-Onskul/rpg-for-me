@@ -219,7 +219,7 @@ test('чат: сообщения, броски и скрытые броски м
 test('игрок: присоединение и сводка листа', () => {
   let s = table();
   assert.equal(s.players.p1.name, 'Аня');
-  s = ok(T.apply(s, { type: 'player.sheet', sheet: { name: 'Торин', cls: 'Воин', level: 3, hp: 20, hpMax: 28, ac: 17 } }, P1));
+  s = ok(T.apply(s, { type: 'player.sheet', sheet: { tsys: 'dnd2014', name: 'Торин', cls: 'Воин', level: 3, hp: 20, hpMax: 28, ac: 17 } }, P1));
   assert.equal(s.players.p1.sheet.ac, 17);
   assert.equal(T.viewFor(s, GM).players.p1.sheet.name, 'Торин');
   assert.equal(T.viewFor(s, P2).players.p1.sheet, undefined, 'чужие листы игроки не видят');

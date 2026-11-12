@@ -94,8 +94,9 @@
     el.innerHTML = `<div class="tbl" id="tbl">
       <div class="tbl-top">
         ${gm ? `<div class="room">Код стола: <b id="roomCode" class="code">——</b> <span class="net" id="netState"></span></div>
+          <label class="sys">НРИ <select id="tableSystem" aria-label="Во что играем">${Object.entries(T.SYSTEMS).map(([id, x]) => `<option value="${id}">${esc(x.name)}</option>`).join('')}</select></label>
           <div class="tools-r"><button class="tb" id="campSave">Сохранить в файл</button><label class="tb" for="campLoad">Загрузить</label><input type="file" id="campLoad" accept=".json,application/json" class="sr"></div>`
-        : `<div class="room">Стол мастера <span class="net" id="netState"></span></div><div class="tools-r"><button class="tb" id="leave">Выйти</button></div>`}
+        : `<div class="room">Стол мастера · <b id="tableSystemName"></b> <span class="net" id="netState"></span></div><div class="tools-r"><button class="tb" id="leave">Выйти</button></div>`}
       </div>
       <section class="tbl-map">
         <div class="map-tools" role="toolbar" aria-label="Инструменты карты">
@@ -123,10 +124,10 @@
       <aside class="tbl-chat">
         <h3>Кубики и чат</h3>
         <div class="dice">
-          <div class="quick">${[4, 6, 8, 10, 12, 20, 100].map((d) => `<button class="tb" data-die="${d}">к${d}</button>`).join('')}</div>
-          <div class="row"><label class="sr" for="diceExpr">Бросок</label><input id="diceExpr" placeholder="1к20+5, 2к6, 1к20 преим" autocomplete="off">
+          <div class="quick" id="diceQuick"></div>
+          <div class="row"><label class="sr" for="diceExpr">Бросок</label><input id="diceExpr" autocomplete="off">
             <button class="tb pri" id="diceRoll">Бросить</button></div>
-          <div class="row small"><label><select id="diceMode"><option value="">обычный</option><option value=" преим">с преимуществом</option><option value=" помеха">с помехой</option></select></label>
+          <div class="row small"><span id="diceOpts"></span>
             <label><input type="checkbox" id="diceSecret"> ${gm ? 'скрытно' : 'только мастеру'}</label></div>
           <div class="err" id="diceMsg" aria-live="polite"></div>
         </div>
@@ -136,6 +137,24 @@
     </div>`;
 
     const vp = $('#mapVp', el), world = $('#mapWorld', el);
+    const sysId = () => T.systemOf(view);
+    const sys = () => T.SYSTEMS[sysId()];
+    let shownSys = null;
+    /** Кубики, подсказки и название НРИ — перерисовываются, когда мастер меняет систему. */
+    function drawSystem() {
+      const id = sysId(), x = T.SYSTEMS[id];
+      if (shownSys === id) return;
+      shownSys = id;
+      $('#diceQuick', el).innerHTML = x.dice.quick.map((d) => `<button class="tb" data-die="${d}">к${d}</button>`).join('')
+        + (x.dice.skill ? '<button class="tb" data-die3="1">3к6</button>' : '');
+      $('#diceExpr', el).placeholder = x.dice.placeholder;
+      $('#diceOpts', el).innerHTML = x.dice.advantage
+        ? '<label><select id="diceMode" aria-label="Режим броска"><option value="">обычный</option><option value=" преим">с преимуществом</option><option value=" помеха">с помехой</option></select></label>'
+        : x.dice.skill ? '<label>навык <input id="diceSkill" type="number" min="-10" max="40" style="width:4.2em" aria-label="Значение навыка для проверки 3к6"></label>' : '';
+      const nm = $('#tableSystemName', el); if (nm) nm.textContent = x.name;
+      const sel = $('#tableSystem', el); if (sel) sel.value = id;
+      $$('[data-tool="measure"]', el).forEach((b) => { b.title = 'Линейка, ' + (x.cell.unit === 'фт' ? 'футы' : x.cell.unit === 'ярд' ? 'ярды' : 'клетки'); });
+    }
     const scene = () => (view ? T.activeScene(view) : null);
     const cellPx = () => (scene() ? scene().grid.size : 50);
     const flash = (id, text) => { const n = $('#' + id, el); if (!n) return; n.textContent = text; clearTimeout(msgTimer); msgTimer = setTimeout(() => { n.textContent = ''; }, 4000); };
@@ -243,7 +262,7 @@
         drag.el.style.left = (drag.ox + dx - px / 2) + 'px';
         drag.el.style.top = (drag.oy + dy - px / 2) + 'px';
         const a = T.grid.cellOf(drag.ox, drag.oy, scene().grid), b = T.grid.cellOf(drag.ox + dx, drag.oy + dy, scene().grid);
-        hint(`${T.grid.distanceFeet(a, b)} фт`);
+        hint(T.grid.distance(a, b, sysId()).text);
         return;
       }
       if (drag.kind === 'select') return;
@@ -281,10 +300,11 @@
       const g = sc.grid;
       if (d.kind === 'measure') {
         const a = T.grid.cellOf(d.start.x, d.start.y, g), b = T.grid.cellOf(d.end.x, d.end.y, g);
-        const ft = T.grid.distanceFeet(a, b);
+        const dist = T.grid.distance(a, b, sysId());
+        const cells = T.grid.distance(a, b, 'munchkin').n;
         svg.innerHTML = `<line x1="${d.start.x}" y1="${d.start.y}" x2="${d.end.x}" y2="${d.end.y}" class="ruler"/>
-          <text x="${d.end.x + 8}" y="${d.end.y - 8}" class="ruler-t">${ft} фт (${ft / 5} кл.)</text>`;
-        hint(`${ft} фт`);
+          <text x="${d.end.x + 8}" y="${d.end.y - 8}" class="ruler-t">${esc(dist.text)}${dist.unit === 'кл.' ? '' : ` (${cells} кл.)`}</text>`;
+        hint(dist.text);
       } else {
         const a = T.grid.cellOf(d.start.x, d.start.y, g), b = T.grid.cellOf(d.end.x, d.end.y, g);
         const x = Math.min(a.c, b.c) * g.size + (g.offsetX || 0), y = Math.min(a.r, b.r) * g.size + (g.offsetY || 0);
@@ -304,22 +324,29 @@
       if (e.target.closest('#zoomFit')) return fit();
       const die = e.target.closest('[data-die]');
       if (die) { $('#diceExpr', el).value = '1к' + die.dataset.die; roll(); return; }
+      if (e.target.closest('[data-die3]')) { $('#diceExpr', el).value = '3к6'; roll(); return; }
       if (e.target.closest('#diceRoll')) return roll();
       if (e.target.closest('#chatSend')) return say();
       if (ctx.onClick) ctx.onClick(e, api);
     });
     el.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
-      if (e.target.id === 'diceExpr') { e.preventDefault(); roll(); }
+      if (e.target.id === 'diceExpr' || e.target.id === 'diceSkill') { e.preventDefault(); roll(); }
       if (e.target.id === 'chatText') { e.preventDefault(); say(); }
     });
     el.addEventListener('change', (e) => { if (ctx.onChange) ctx.onChange(e, api); });
     function roll() {
       const expr = $('#diceExpr', el).value.trim();
-      if (!expr) { flash('diceMsg', 'Впишите бросок, например 1к20+5'); return; }
-      const full = expr + ($('#diceMode', el).value || '');
-      if (!T.dice.parse(full)) { flash('diceMsg', 'Не понял запись броска. Пример: 1к20+5, 2к6, 1к20 преим'); return; }
-      act({ type: 'chat.roll', expr: full, gmOnly: $('#diceSecret', el).checked });
+      const skillEl = $('#diceSkill', el);
+      const secret = $('#diceSecret', el).checked;
+      if (skillEl && skillEl.value !== '' && (!expr || /^3[кkdд]6$/i.test(expr))) {
+        act({ type: 'chat.roll', expr: '3к6', skill: Number(skillEl.value), gmOnly: secret }); return;
+      }
+      if (!expr) { flash('diceMsg', 'Впишите бросок, например ' + sys().dice.placeholder.split(',')[0]); return; }
+      const mode = $('#diceMode', el);
+      const full = expr + ((mode && mode.value) || '');
+      if (!T.dice.parse(full)) { flash('diceMsg', 'Не понял запись броска. Пример: ' + sys().dice.placeholder); return; }
+      act({ type: 'chat.roll', expr: full, gmOnly: secret });
     }
     function say() {
       const inp = $('#chatText', el);
@@ -332,6 +359,12 @@
       const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
       log.innerHTML = view.chat.slice(-120).map((m) => {
         const who = `<b class="${m.gm ? 'gm' : ''}">${esc(m.from)}</b>${m.gmOnly ? ' <span class="tag">скрыто</span>' : ''}`;
+        if (m.check) {
+          const c = m.check;
+          const verdict = c.crit === 'success' ? 'критический успех' : c.crit === 'fail' ? 'критический провал' : c.success ? 'успех' : 'провал';
+          return `<div class="msg roll${c.crit === 'success' ? ' hit' : c.crit === 'fail' ? ' miss' : ''}">${who} проверяет ${m.label ? esc(m.label) + ', ' : ''}<span class="ex">навык ${c.skill}</span>
+            <div class="res"><span class="tot">${c.total}</span> <span class="det">[${c.rolls.join(', ')}]</span> <span class="tag">${verdict}${c.crit ? '' : `, запас ${c.margin >= 0 ? c.margin : '−' + Math.abs(c.margin)}`}</span></div></div>`;
+        }
         if (m.roll) {
           return `<div class="msg roll${m.roll.crit ? ' ' + m.roll.crit : ''}">${who} бросает <span class="ex">${esc(m.roll.expr)}</span>
             <div class="res"><span class="tot">${m.roll.total}</span> <span class="det">${esc(m.roll.text)}</span>${m.roll.crit === 'hit' ? ' <span class="tag">крит!</span>' : m.roll.crit === 'miss' ? ' <span class="tag">провал</span>' : ''}</div></div>`;
@@ -358,11 +391,12 @@
       return pane;
     }
     const api = {
-      el, flash, act, fit,
+      el, flash, act, fit, sysId, sys,
       get view() { return view; }, get sel() { return sel; }, set sel(v) { sel = v; },
       scene, cellPx, selectToken,
       update(v) {
         view = v;
+        drawSystem();
         if (sel && !(scene() && scene().tokens.some((t) => t.id === sel))) sel = null;
         drawMap(); drawChat(); renderPanes();
       },
@@ -373,6 +407,13 @@
   }
 
   // ---------- Общие части панелей ----------
+  /** Инициатива по правилам НРИ: D&D — к20 + бонус, GURPS — Базовая скорость, Манчкин — к6 + бонус. */
+  function initFor(sysId, bonus) {
+    const x = T.SYSTEMS[sysId];
+    if (!x.init.roll) return { total: Number(bonus) || 0, text: String(Number(bonus) || 0) };
+    const r = T.dice.roll(x.init.roll + (Number(bonus) ? (bonus > 0 ? '+' : '') + Number(bonus) : ''));
+    return { total: r.total, text: r.text };
+  }
   function combatPane(v, gm, me) {
     const sc = T.activeScene(v);
     const cur = T.combat.current(v);
@@ -396,7 +437,15 @@
         ${gm ? '<button class="tb" id="combatPrev">← Назад</button><button class="tb pri" id="combatNext">Следующий ход →</button><button class="tb" id="combatAddAll">Добавить всех на сцене</button><button class="tb" id="combatEnd">Закончить бой</button>'
           : `${myTurn ? '<button class="tb pri" id="combatNext">Завершить ход</button>' : ''}`}
       </div>
-      ${!gm && mine.length ? `<div class="row"><label for="myInit">Моя инициатива (к20 + бонус)</label><input id="myInitMod" type="number" value="0" aria-label="Бонус инициативы" style="width:4em"><button class="tb" id="myInitRoll">Бросить за ${esc(mine[0].name)}</button></div>` : ''}`;
+      ${!gm && mine.length ? (() => { const x = T.SYSTEMS[T.systemOf(v)]; return `<div class="row"><label for="myInitMod">${esc(x.init.label)}${x.init.roll ? ' (' + x.init.roll + ' + он)' : ''}</label><input id="myInitMod" type="number" step="${x.init.roll ? 1 : 0.25}" value="${x.init.roll ? 0 : 5}" style="width:4.5em"><button class="tb" id="myInitRoll">${x.init.roll ? 'Бросить' : 'Заявить'} за ${esc(mine[0].name)}</button></div>`; })() : ''}`;
+  }
+  const cap = (k) => k.charAt(0).toUpperCase() + k.slice(1);
+  /** Сводка листа игрока под его НРИ. */
+  function sheetKv(sh) {
+    const kv = (label, value) => (value == null || value === '' ? '' : `<span>${label} <b>${esc(value)}</b></span>`);
+    if (sh.tsys === 'munchkin') return kv('Уровень', sh.level) + kv('Сила в бою', sh.power);
+    if (sh.tsys === 'gurps') return kv('Очки', sh.points) + (sh.hp != null ? kv('ЕЖ', sh.hp + '/' + sh.hpMax) : '') + kv('Уклонение', sh.dodge) + kv('Движение', sh.speed) + kv('Баз. скорость', sh.init);
+    return (sh.hp != null ? kv('Хиты', sh.hp + '/' + sh.hpMax) : '') + kv('КД', sh.ac) + kv('Пасс. внимат.', sh.passive) + kv('Скорость', sh.speed);
   }
   function journalPane(v, gm) {
     if (!gm) {
@@ -439,7 +488,9 @@
     }
     function start(saved) {
       code = (saved && saved.code) || N.roomCode();
-      host = N.createHost(multi, (saved && saved.state) || T.newState('dnd5e'));
+      const st = (saved && saved.state) || T.newState();
+      st.system = T.systemOf(st);
+      host = N.createHost(multi, st);
       if (saved && saved.assets) host.assets = saved.assets;
       host.onChange = () => { board.update(host.state); save(); };
       $('#roomCode', el).textContent = code;
@@ -479,22 +530,23 @@
       }
       if (k === 'tokens') {
         const t = sc && board.sel ? sc.tokens.find((x) => x.id === board.sel) : null;
+        const fields = T.SYSTEMS[T.systemOf(v)].fields;
         const players = Object.entries(v.players);
         return `${t ? `<div class="form" id="tokEdit"><h4>Фишка: ${esc(t.name)}</h4>
             <label for="tokEditName">Имя</label><input id="tokEditName" value="${esc(t.name)}">
             <label for="tokEditKind">Тип</label><select id="tokEditKind"><option value="npc" ${t.kind === 'npc' ? 'selected' : ''}>Мастерский (монстр, NPC)</option><option value="pc" ${t.kind === 'pc' ? 'selected' : ''}>Герой игрока</option></select>
             <label for="tokEditOwner">Управляет</label><select id="tokEditOwner"><option value="">никто (только мастер)</option>${players.map(([id, p]) => `<option value="${esc(id)}" ${t.owner === id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
-            <div class="two"><div><label for="tokEditHp">Хиты</label><input id="tokEditHp" type="number" value="${t.hp ?? ''}"></div><div><label for="tokEditHpMax">из</label><input id="tokEditHpMax" type="number" value="${t.hpMax ?? ''}"></div><div><label for="tokEditAc">КД</label><input id="tokEditAc" type="number" value="${t.ac ?? ''}"></div></div>
+            <div class="two">${fields.map((f) => `<div><label for="tokEdit${cap(f.key)}">${esc(f.label)}</label><input id="tokEdit${cap(f.key)}" data-field="${f.key}" type="number" value="${t[f.key] ?? ''}"></div>`).join('')}</div>
             <div class="two"><div><label for="tokEditSize">Размер, клеток</label><input id="tokEditSize" type="number" step="0.5" min="0.5" max="4" value="${t.size || 1}"></div><div><label for="tokEditColor">Цвет</label><input id="tokEditColor" type="color" value="${esc(t.color || '#888888')}"></div></div>
             <label class="chk"><input type="checkbox" id="tokEditHidden" ${t.hidden ? 'checked' : ''}> Скрыта от игроков</label>
             <div class="tools"><button class="tb" id="tokToCombat">В бой</button><button class="tb" id="tokDel">Удалить</button><button class="tb" id="tokUnsel">Готово</button></div></div>` : ''}
           <div class="form"><h4>Новая фишка</h4>${sc ? `
             <label for="tokName">Имя</label><input id="tokName" placeholder="Гоблин">
             <label for="tokKind">Тип</label><select id="tokKind"><option value="npc">Мастерский (монстр, NPC)</option><option value="pc">Герой игрока</option></select>
-            <div class="two"><div><label for="tokHp">Хиты</label><input id="tokHp" type="number"></div><div><label for="tokAc">КД</label><input id="tokAc" type="number"></div></div>
+            <div class="two">${fields.filter((f) => f.key !== 'hpMax').map((f) => `<div><label for="tok${cap(f.key)}">${esc(f.label)}</label><input id="tok${cap(f.key)}" data-newfield="${f.key}" type="number"></div>`).join('')}</div>
             <label for="tokImage">Картинка (по желанию)</label><input type="file" id="tokImage" accept="image/*">
             <button class="tb pri" id="tokAdd">Добавить на карту</button><div class="err" id="tokMsg"></div>` : '<p class="muted">Сначала создайте сцену.</p>'}</div>
-          <div class="list">${sc ? sc.tokens.map((x) => `<div class="li"><span class="dot" style="background:${esc(x.color)}"></span><button class="lnk" data-pick="${esc(x.id)}">${esc(x.name)}</button>${x.hidden ? ' <span class="tag">скрыта</span>' : ''}${x.hp != null ? ` <span class="muted">${x.hp}/${x.hpMax ?? '?'}</span>` : ''}</div>`).join('') : ''}</div>`;
+          <div class="list">${sc ? sc.tokens.map((x) => `<div class="li"><span class="dot" style="background:${esc(x.color)}"></span><button class="lnk" data-pick="${esc(x.id)}">${esc(x.name)}</button>${x.hidden ? ' <span class="tag">скрыта</span>' : ''}${T.SYSTEMS[T.systemOf(v)].hp && x.hp != null ? ` <span class="muted">${x.hp}/${x.hpMax ?? '?'}</span>` : ''}${T.systemOf(v) === 'munchkin' && x.level != null ? ` <span class="muted">ур. ${x.level}</span>` : ''}</div>`).join('') : ''}</div>`;
       }
       if (k === 'combat') return combatPane(v, true, 'gm');
       if (k === 'journal') return journalPane(v, true);
@@ -502,8 +554,8 @@
         const ps = Object.entries(v.players);
         const online = new Set(Object.values(host ? host.peers : {}).map((p) => p.actor));
         return `<div id="playerList" class="list">${ps.map(([id, p]) => `<div class="pl"><b>${esc(p.name)}</b> <span class="tag ${online.has(id) ? 'on' : ''}">${online.has(id) ? 'в игре' : 'не в сети'}</span>
-            ${p.sheet ? `<div class="sheet">${esc(p.sheet.name || '')}${p.sheet.cls ? ' · ' + esc(p.sheet.cls) : ''}${p.sheet.level ? ' · ' + esc(p.sheet.level) + ' ур.' : ''}
-              <div class="kv">${p.sheet.hp != null ? `<span>Хиты <b>${esc(p.sheet.hp)}/${esc(p.sheet.hpMax)}</b></span>` : ''}${p.sheet.ac != null ? `<span>КД <b>${esc(p.sheet.ac)}</b></span>` : ''}${p.sheet.passive != null ? `<span>Пасс. внимат. <b>${esc(p.sheet.passive)}</b></span>` : ''}${p.sheet.speed ? `<span>Скорость <b>${esc(p.sheet.speed)}</b></span>` : ''}</div></div>` : '<div class="muted">лист не прислан</div>'}
+            ${p.sheet ? `<div class="sheet">${esc(p.sheet.name || '')}${p.sheet.race ? ' · ' + esc(p.sheet.race) : ''}${p.sheet.cls ? ' · ' + esc(p.sheet.cls) : ''}${p.sheet.level && p.sheet.tsys !== 'munchkin' && p.sheet.tsys !== 'gurps' ? ' · ' + esc(p.sheet.level) + ' ур.' : ''}
+              <div class="kv">${sheetKv(p.sheet)}</div></div>` : '<div class="muted">лист не прислан</div>'}
           </div>`).join('') || '<p class="muted">Пока никто не подключился.</p>'}</div>
           <div class="form"><h4>Как подключиться</h4><p class="muted">Игрок открывает приложение → «Игрок» → «Подключиться к столу мастера» и вводит код <b>${esc(code || '')}</b>.</p></div>`;
       }
@@ -550,8 +602,10 @@
         const f = $('#tokImage', el) && $('#tokImage', el).files[0];
         if (f) { try { const r = await readImage(f, 256, 'image/png'); img = 'tok' + Date.now().toString(36); host.setAsset(img, r.data); } catch (err) { b.flash('tokMsg', err.message); return; } }
         const pos = firstFreeCell(sc);
-        const hp = val('tokHp') === '' ? null : Number(val('tokHp'));
-        host.act({ type: 'token.add', token: { name, kind: val('tokKind'), hp, hpMax: hp, ac: val('tokAc') === '' ? null : Number(val('tokAc')), x: pos.x, y: pos.y, img } });
+        const token = { name, kind: val('tokKind'), x: pos.x, y: pos.y, img };
+        $$('[data-newfield]', el).forEach((n) => { if (n.value !== '') token[n.dataset.newfield] = Number(n.value); });
+        if (token.hp != null) token.hpMax = token.hp;
+        host.act({ type: 'token.add', token });
         return;
       }
       const pick = q('[data-pick]'); if (pick) { b.selectToken(pick.dataset.pick); return; }
@@ -563,7 +617,8 @@
       }
       if (q('#tokToCombat') && b.sel) {
         if (!v.combat.active) host.act({ type: 'combat.start' });
-        host.act({ type: 'combat.add', tokenId: b.sel, init: T.dice.roll('1к20').total });
+        const tk = sc && sc.tokens.find((x) => x.id === b.sel);
+        host.act({ type: 'combat.add', tokenId: b.sel, init: initFor(T.systemOf(v), T.systemOf(v) === 'gurps' ? (tk && tk.move) : 0).total });
         return;
       }
       if (q('#combatStart')) { host.act({ type: 'combat.start' }); return; }
@@ -571,7 +626,7 @@
       if (q('#combatNext')) { host.act({ type: 'combat.next' }); return; }
       if (q('#combatPrev')) { host.act({ type: 'combat.prev' }); return; }
       if (q('#combatAddAll') && sc) {
-        for (const t of sc.tokens) if (!host.state.combat.order.some((o) => o.tokenId === t.id)) host.act({ type: 'combat.add', tokenId: t.id, init: T.dice.roll('1к20').total });
+        for (const t of sc.tokens) if (!host.state.combat.order.some((o) => o.tokenId === t.id)) host.act({ type: 'combat.add', tokenId: t.id, init: initFor(T.systemOf(v), T.systemOf(v) === 'gurps' ? t.move : 0).total });
         return;
       }
       const cbr = q('[data-cbremove]'); if (cbr) { host.act({ type: 'combat.remove', tokenId: cbr.dataset.cbremove }); return; }
@@ -590,7 +645,9 @@
     async function gmChange(e, b) {
       const t = e.target;
       const v = host.state, sc = T.activeScene(v);
-      const tokPatch = { tokEditName: 'name', tokEditKind: 'kind', tokEditOwner: 'owner', tokEditHp: 'hp', tokEditHpMax: 'hpMax', tokEditAc: 'ac', tokEditSize: 'size', tokEditColor: 'color' };
+      if (t.id === 'tableSystem') { host.act({ type: 'system.set', system: t.value }); return; }
+      const tokPatch = { tokEditName: 'name', tokEditKind: 'kind', tokEditOwner: 'owner', tokEditSize: 'size', tokEditColor: 'color' };
+      if (t.dataset.field && b.sel) { host.act({ type: 'token.update', tokenId: b.sel, patch: { [t.dataset.field]: t.value } }); return; }
       if (tokPatch[t.id] && b.sel) {
         let value = t.value;
         if (t.id === 'tokEditOwner' && !value) value = null;
@@ -671,12 +728,14 @@
       if (k === 'combat') return combatPane(v, false, client.you);
       if (k === 'journal') return journalPane(v, false);
       if (k === 'hero') {
-        const chars = (opts.getCharacters && opts.getCharacters()) || [];
+        const all = (opts.getCharacters && opts.getCharacters()) || [];
+        const chars = all.filter((c) => c.tsys === T.systemOf(v));
+        const sysName = T.SYSTEMS[T.systemOf(v)].name;
         const sent = v.players[client.you] && v.players[client.you].sheet;
         return `<div class="form"><h4>Мой персонаж для мастера</h4>
           ${chars.length ? `<label for="heroPick">Персонаж</label><select id="heroPick">${chars.map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('')}</select>
-            <button class="tb pri" id="sheetSend">Показать мастеру</button>` : '<p class="muted">У вас нет сохранённых персонажей на этом устройстве. Создайте лист в разделе «Игрок».</p>'}
-          ${sent ? `<p class="muted">Мастер видит: ${esc(sent.name)}${sent.cls ? ', ' + esc(sent.cls) : ''}${sent.hp != null ? `, хиты ${esc(sent.hp)}/${esc(sent.hpMax)}` : ''}${sent.ac != null ? `, КД ${esc(sent.ac)}` : ''}.</p>` : ''}</div>`;
+            <button class="tb pri" id="sheetSend">Показать мастеру</button>` : `<p class="muted">На этом устройстве нет персонажей для ${esc(sysName)}. Создайте лист в разделе «Игрок».</p>`}
+          ${sent ? `<p class="muted">Мастер видит: ${esc(sent.name)}${sent.cls ? ', ' + esc(sent.cls) : ''}.</p><div class="kv">${sheetKv(sent)}</div>` : ''}</div>`;
       }
       return '';
     }
@@ -686,7 +745,7 @@
       if (q('#myInitRoll')) {
         const sc = b.scene(); const mine = sc ? sc.tokens.filter((t) => t.owner === client.you) : [];
         if (!mine.length) return;
-        const r = T.dice.roll('1к20+' + (Number($('#myInitMod', el).value) || 0));
+        const r = initFor(T.systemOf(b.view), Number($('#myInitMod', el).value) || 0);
         client.act({ type: 'combat.add', tokenId: mine[0].id, init: r.total });
         client.act({ type: 'chat.say', text: `Инициатива ${mine[0].name}: ${r.text}` });
         return;

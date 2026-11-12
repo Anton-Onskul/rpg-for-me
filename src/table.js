@@ -65,6 +65,49 @@
     },
   };
 
+  /** GURPS: 3к6 «под» навык. Крит. успех 3–4 (5 при навыке 15+, 6 при 16+); крит. провал 18, 17 при навыке ≤15, или на 10+ выше навыка. */
+  dice.gurpsCheck = function (skill, rng) {
+    const sk = Math.round(num(skill));
+    const r = rng || ((sides) => 1 + Math.floor(Math.random() * sides));
+    const rolls = [r(6), r(6), r(6)];
+    const total = rolls[0] + rolls[1] + rolls[2];
+    let crit = null;
+    if (total <= 4 || (total === 5 && sk >= 15) || (total === 6 && sk >= 16)) crit = 'success';
+    else if (total === 18 || (total === 17 && sk <= 15) || total >= sk + 10) crit = 'fail';
+    const success = crit === 'success' || (crit !== 'fail' && (total <= sk || total <= 4));
+    return { skill: sk, rolls, total, margin: sk - total, success, crit };
+  };
+
+  // ---------- НРИ стола ----------
+  const D20 = [4, 6, 8, 10, 12, 20, 100];
+  const DND_FIELDS = [{ key: 'hp', label: 'Хиты' }, { key: 'hpMax', label: 'из' }, { key: 'ac', label: 'КД' }];
+  const SYSTEMS = {
+    dnd2014: { name: 'D&D 5e (2014)', sheet: { system: 'dnd5e', edition: '2014' }, cell: { size: 5, unit: 'фт', text: (n) => n + ' фт' },
+      fields: DND_FIELDS, hp: true, init: { label: 'Бонус инициативы', roll: '1к20' },
+      dice: { quick: D20, advantage: true, skill: false, placeholder: '1к20+5, 2к6, 1к20 преим' } },
+    dnd2024: { name: 'D&D 5e (2024)', sheet: { system: 'dnd5e', edition: '2024' }, cell: { size: 5, unit: 'фт', text: (n) => n + ' фт' },
+      fields: DND_FIELDS, hp: true, init: { label: 'Бонус инициативы', roll: '1к20' },
+      dice: { quick: D20, advantage: true, skill: false, placeholder: '1к20+5, 2к6, 1к20 преим' } },
+    gurps: { name: 'GURPS 4e', sheet: { system: 'gurps4e' }, cell: { size: 1, unit: 'ярд', text: (n) => n + ' ярд.' },
+      fields: [{ key: 'hp', label: 'ЕЖ' }, { key: 'hpMax', label: 'из' }, { key: 'dr', label: 'СП' }, { key: 'dodge', label: 'Уклонение' }, { key: 'move', label: 'Движение' }],
+      hp: true, init: { label: 'Базовая скорость', roll: null },
+      dice: { quick: [6], advantage: false, skill: true, placeholder: '3к6, 2к6+1 (урон)' } },
+    munchkin: { name: 'Манчкин', sheet: { system: 'munchkin' }, cell: { size: 1, unit: 'кл.', text: (n) => n + ' кл.' },
+      fields: [{ key: 'level', label: 'Уровень', public: true }, { key: 'bonus', label: 'Бонус' }],
+      hp: false, init: { label: 'Бонус', roll: '1к6' },
+      dice: { quick: [6], advantage: false, skill: false, placeholder: '1к6' } },
+  };
+  const systemOf = (s) => (s && SYSTEMS[s.system] ? s.system : 'dnd2014');
+  /** К какой НРИ стола относится персонаж из листов героя. */
+  const sheetSystem = (c) => {
+    if (!c) return null;
+    if (c.system === 'dnd5e') return String(c.data && c.data.edition) === '2024' ? 'dnd2024' : 'dnd2014';
+    if (c.system === 'gurps4e') return 'gurps';
+    if (c.system === 'munchkin') return 'munchkin';
+    return null;
+  };
+  const STAT_KEYS = ['hp', 'hpMax', 'ac', 'dr', 'dodge', 'move', 'level', 'bonus'];
+
   // ---------- Сетка ----------
   const grid = {
     cellOf(x, y, g) {
@@ -79,6 +122,12 @@
     /** D&D 5e: каждая клетка — 5 футов, диагональ тоже считается за одну клетку. */
     distanceFeet(a, b) {
       return Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) * 5;
+    },
+    /** Расстояние в единицах НРИ: D&D — футы, GURPS — ярды, Манчкин — клетки. */
+    distance(a, b, sys) {
+      const c = SYSTEMS[sys] ? SYSTEMS[sys].cell : SYSTEMS.dnd2014.cell;
+      const n = Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)) * c.size;
+      return { n, unit: c.unit, text: c.text(n) };
     },
   };
 
@@ -108,7 +157,7 @@
 
   // ---------- Состояние ----------
   const newState = (system) => ({
-    v: 1, system: system || 'dnd5e', seq: 0, scenes: [], activeSceneId: null,
+    v: 1, system: SYSTEMS[system] ? system : 'dnd2014', seq: 0, scenes: [], activeSceneId: null,
     combat: { active: false, round: 0, turn: 0, moved: false, order: [] },
     chat: [], journal: [], players: {},
   });
@@ -138,19 +187,26 @@
     },
   };
 
-  const TOKEN_KEYS = ['name', 'kind', 'owner', 'size', 'color', 'hp', 'hpMax', 'ac', 'hidden', 'img', 'note'];
+  const TOKEN_KEYS = ['name', 'kind', 'owner', 'size', 'color', 'hidden', 'img', 'note'].concat(STAT_KEYS);
   function cleanToken(t, s, scene) {
     const out = {};
     for (const k of TOKEN_KEYS) if (k in t) out[k] = t[k];
     if ('name' in out) out.name = str(out.name, 60) || 'Фишка';
     if ('kind' in out) out.kind = out.kind === 'pc' ? 'pc' : 'npc';
     if ('size' in out) out.size = clampN(num(out.size, 1), 0.5, 4);
-    for (const k of ['hp', 'hpMax', 'ac']) if (k in out) out[k] = out[k] === '' || out[k] == null ? null : Math.round(num(out[k]));
+    for (const k of STAT_KEYS) if (k in out) out[k] = out[k] === '' || out[k] == null ? null : Math.round(num(out[k]));
     if ('hidden' in out) out.hidden = !!out.hidden;
     return out;
   }
 
   const ACTIONS = {
+    'system.set'(s, a, act) {
+      if (!isGM(act)) return 'Только мастер выбирает НРИ';
+      if (!SYSTEMS[a.system]) return 'Неизвестная НРИ';
+      s.system = a.system;
+      for (const p of Object.values(s.players)) if (p.sheet && p.sheet.tsys !== a.system) delete p.sheet;
+      return null;
+    },
     'scene.add'(s, a, act) {
       if (!isGM(act)) return 'Только мастер создаёт сцены';
       const sc = a.scene || {};
@@ -309,8 +365,17 @@
       return null;
     },
     'chat.roll'(s, a, act) {
-      const roll = dice.roll(a.expr, typeof a.rng === 'function' ? a.rng : null);
-      if (!roll) return 'Не понял запись броска. Пример: 1к20+5, 2к6, 1к20 преим';
+      const rng = typeof a.rng === 'function' ? a.rng : null;
+      const skill = a.skill === '' || a.skill == null ? NaN : Number(a.skill);
+      if (Number.isFinite(skill) && systemOf(s) === 'gurps') {
+        const check = dice.gurpsCheck(clampN(skill, -10, 40), rng);
+        const roll = { expr: '3к6', total: check.total, parts: [{ count: 3, sides: 6, sign: 1, rolls: check.rolls, kept: check.rolls }], mod: 0, mode: 'normal', crit: null,
+          text: '[' + check.rolls.join(', ') + '] = ' + check.total };
+        pushChat(s, { from: nameOf(s, act), fromId: act.id, gm: isGM(act), roll, check, label: str(a.label, 80), gmOnly: !!a.gmOnly });
+        return null;
+      }
+      const roll = dice.roll(a.expr, rng);
+      if (!roll) return 'Не понял запись броска. Пример: ' + SYSTEMS[systemOf(s)].dice.placeholder;
       pushChat(s, { from: nameOf(s, act), fromId: act.id, gm: isGM(act), roll, label: str(a.label, 80), gmOnly: !!a.gmOnly });
       return null;
     },
@@ -345,8 +410,9 @@
     'player.sheet'(s, a, act) {
       if (!act || act.role !== 'player' || !s.players[act.id]) return 'Сначала присоединитесь к столу';
       const sh = a.sheet || {};
+      if (sh.tsys !== systemOf(s)) return 'За этим столом играют в ' + SYSTEMS[systemOf(s)].name + ' — выберите персонажа этой НРИ';
       const out = {};
-      for (const k of ['name', 'cls', 'race', 'level', 'hp', 'hpMax', 'ac', 'init', 'speed', 'passive', 'system']) if (k in sh) out[k] = typeof sh[k] === 'number' ? sh[k] : str(sh[k], 60);
+      for (const k of ['name', 'cls', 'race', 'level', 'hp', 'hpMax', 'ac', 'init', 'speed', 'passive', 'system', 'tsys', 'dodge', 'points', 'power']) if (k in sh) out[k] = typeof sh[k] === 'number' ? sh[k] : str(sh[k], 60);
       s.players[act.id].sheet = out;
       return null;
     },
@@ -398,7 +464,9 @@
         if (t.kind === 'pc') return t;
         const h = health(t.hp, t.hpMax);
         const out = Object.assign({}, t, { health: h });
-        delete out.hp; delete out.hpMax; delete out.ac; delete out.note;
+        const pub = new Set(SYSTEMS[systemOf(s)].fields.filter((f) => f.public).map((f) => f.key));
+        for (const k of STAT_KEYS) if (!pub.has(k)) delete out[k];
+        delete out.note;
         return out;
       });
       sc.tokens.forEach((t) => visible.add(t.id));
@@ -427,9 +495,10 @@
     if (!o || o.app !== 'rpg-table' || !o.state || !Array.isArray(o.state.scenes)) return { ok: false, error: 'Это не файл кампании' };
     const base = newState(o.state.system);
     const state = Object.assign(base, o.state, { combat: Object.assign(base.combat, o.state.combat || {}) });
+    state.system = systemOf(state);
     return { ok: true, state, assets: o.assets || {} };
   }
 
-  const API = { dice, grid, fog, combat, health, newState, apply, viewFor, activeScene, findToken, exportCampaign, importCampaign };
+  const API = { SYSTEMS, systemOf, sheetSystem, dice, grid, fog, combat, health, newState, apply, viewFor, activeScene, findToken, exportCampaign, importCampaign };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.RPG_TABLE = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -166,3 +166,71 @@ test('мастер и игрок: подключение, видимость, х
   assert.deepEqual(pl.errors, []);
   await context.close();
 });
+
+test('мастер выбирает НРИ прямо на столе: поля фишек, кубики, листы игроков', async () => {
+  const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const gm = await newPage(context);
+  await gmWithScene(gm.page);
+  const page = gm.page;
+  assert.deepEqual(await page.$$eval('#tableSystem option', (o) => o.map((x) => x.value)), ['dnd2014', 'dnd2024', 'gurps', 'munchkin']);
+  assert.equal(await page.inputValue('#tableSystem'), 'dnd2014');
+  await page.click('[data-tab="tokens"]');
+  assert.equal(await page.locator('#tokAc').count(), 1, 'D&D: КД у фишки');
+
+  // GURPS
+  await page.selectOption('#tableSystem', 'gurps');
+  await page.click('[data-tab="tokens"]');
+  for (const id of ['#tokHp', '#tokDr', '#tokDodge', '#tokMove']) assert.equal(await page.locator(id).count(), 1, id);
+  assert.equal(await page.locator('#tokAc').count(), 0, 'в GURPS нет КД');
+  await page.fill('#tokName', 'Орк');
+  await page.fill('#tokDr', '2');
+  await page.click('#tokAdd');
+  await page.click('.token[data-name="Орк"]');
+  assert.equal(await page.inputValue('#tokEditDr'), '2', 'поле GURPS сохранилось у фишки');
+  assert.equal(await page.locator('[data-die]').count(), 1, 'в GURPS кубик один — к6');
+  assert.equal(await page.locator('#diceMode').count(), 0, 'нет преимущества/помехи');
+  await page.fill('#diceExpr', '3к6');
+  await page.fill('#diceSkill', '12');
+  await page.click('#diceRoll');
+  await page.waitForFunction(() => /навык 12/.test(document.querySelector('#chatLog').textContent));
+  assert.match(await page.textContent('#chatLog'), /(успех|провал)/i);
+
+  // Манчкин и игрок
+  await page.selectOption('#tableSystem', 'munchkin');
+  await page.click('[data-tab="tokens"]');
+  assert.equal(await page.locator('#tokLevel').count(), 1);
+  assert.equal(await page.locator('#tokHp').count(), 0, 'в Манчкине нет хитов');
+  const code = (await page.textContent('#roomCode')).trim();
+
+  const pl = await newPage(context);
+  await pl.page.evaluate(() => localStorage.setItem('rpg-sheets.v1', JSON.stringify({ app: 'rpg-sheets', version: 1, characters: [
+    { id: 'c1', system: 'dnd5e', created: 1, data: { name: 'Лира', edition: '2014' } },
+    { id: 'c2', system: 'munchkin', created: 2, data: { name: 'Гном Вася', level: 3, gear: 4 } },
+  ] })));
+  await pl.page.reload();
+  await pl.page.click('[data-role="player"]');
+  await pl.page.click('[data-act="join"]');
+  await pl.page.waitForSelector('#joinName');
+  await pl.page.fill('#joinName', 'Аня');
+  await pl.page.fill('#joinCode', code);
+  await pl.page.click('#joinGo');
+  await pl.page.waitForSelector('#tableSystemName', { timeout: 8000 });
+  assert.match(await pl.page.textContent('#tableSystemName'), /Манчкин/);
+  assert.equal(await pl.page.locator('[data-die]').count(), 1);
+  await pl.page.click('[data-tab="hero"]');
+  const opts = await pl.page.$$eval('#heroPick option', (o) => o.map((x) => x.textContent));
+  assert.equal(opts.length, 1, 'игрок видит только персонажей НРИ стола');
+  assert.match(opts[0], /Гном Вася/);
+  await pl.page.click('#sheetSend');
+  await page.click('[data-tab="players"]');
+  await page.waitForFunction(() => /Гном Вася/.test(document.querySelector('#playerList').textContent), null, { timeout: 5000 });
+  assert.match(await page.textContent('#playerList'), /Уровень/);
+
+  // смена НРИ у мастера доходит до игрока
+  await page.selectOption('#tableSystem', 'dnd2024');
+  await pl.page.waitForFunction(() => /2024/.test(document.querySelector('#tableSystemName').textContent), null, { timeout: 5000 });
+  assert.doesNotMatch(await page.textContent('#playerList'), /Гном Вася/, 'лист другой НРИ убран');
+  assert.deepEqual(gm.errors, []);
+  assert.deepEqual(pl.errors, []);
+  await context.close();
+});

@@ -154,6 +154,8 @@ body.mode-table .wrap { max-width: none; }
 .tbl-top { grid-area: top; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
 .tbl-top .code { font-family: var(--f-num); font-size: 1.25rem; letter-spacing: .12em; color: var(--accent); }
 .tbl-top .net { font-size: .85rem; color: var(--muted); }
+.tbl-top .sys { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted); }
+.tbl-top .sys select { font: inherit; color: var(--ink, inherit); padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .tbl-top .net.ok { color: var(--ok); }
 .tbl-top .tools-r { display: flex; gap: 6px; flex-wrap: wrap; }
 .tbl .tb { border: 1px solid var(--line); background: var(--sunk); color: var(--ink); border-radius: 7px; padding: 6px 10px; cursor: pointer; font-size: .9rem; display: inline-block; }
@@ -188,6 +190,8 @@ body.mode-table .wrap { max-width: none; }
 .map-hint { padding: 4px 8px; font-size: .85rem; color: var(--muted); min-height: 1.4em; }
 .tbl-side, .tbl-chat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; display: grid; gap: 10px; align-content: start; min-width: 0; }
 .tbl-side { grid-area: side; }
+.tbl-side, .tbl-chat, .tbl .form, .tbl [data-pane] { grid-template-columns: minmax(0, 1fr); }
+.tbl-side { overflow-x: hidden; }
 .tbl-chat { grid-area: chat; }
 .tbl-chat h3 { font-size: 1rem; color: var(--accent); }
 .tabs2 { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -199,6 +203,8 @@ body.mode-table .wrap { max-width: none; }
 .tbl .form label.chk, .tbl label.chk { color: var(--ink); font-size: .9rem; display: flex; gap: 6px; align-items: center; }
 .tbl input:not([type="checkbox"]):not([type="file"]):not([type="color"]), .tbl select, .tbl textarea { width: 100%; box-sizing: border-box; background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; min-width: 0; }
 .tbl .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; }
+.tbl .two > div { min-width: 0; }
+.tbl .two input { width: 100%; min-width: 0; box-sizing: border-box; }
 .tbl .tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .tbl .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tbl .row input { flex: 1; }
@@ -877,7 +883,7 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
     if (!tableClient) { location.hash = 'join'; return; }
     $('#view').innerHTML = '<div id="tableRoot"></div>';
     tableCtl = window.RPG_TABLE_UI.mountPlayer($('#tableRoot'), tableClient, {
-      getCharacters: () => chars.filter((c) => c.system === 'dnd5e' || c.system === 'gurps4e').map((c) => ({ id: c.id, label: displayName(c) + ' — ' + gameOf(c.system).name })),
+      getCharacters: () => chars.map((c) => ({ id: c.id, tsys: window.RPG_TABLE.sheetSystem(c), label: displayName(c) + ' — ' + gameOf(c.system).name })),
       sheetSummary,
       onLeave: () => { tableCtl = null; tableClient = null; go('games'); },
     });
@@ -887,14 +893,18 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
     const c = byId(id);
     if (!c) return null;
     const d = c.data;
+    const tsys = window.RPG_TABLE.sheetSystem(c);
+    if (c.system === 'munchkin') {
+      return { tsys, system: 'Манчкин', name: displayName(c), race: d.race, cls: d.cls, level: RPG.util.int(d.level, 1), power: RPG.munchkin.combatStrength(d.level, d.gear, d.bonus) };
+    }
     if (c.system === 'dnd5e') {
       const rc = dnd.resolveClass(d);
-      return { system: 'D&D 5e', name: displayName(c), cls: rc ? rc.name : '', race: d.race === 'custom' ? d.customRace : d.race, level: RPG.util.int(d.level, 1),
+      return { tsys, system: 'D&D 5e', name: displayName(c), cls: rc ? rc.name : '', race: d.race === 'custom' ? d.customRace : d.race, level: RPG.util.int(d.level, 1),
         hp: RPG.util.int(d.hpCur), hpMax: RPG.util.int(d.hpMax), ac: RPG.util.int(d.ac), speed: String(d.speed || '') + ' фт',
         init: dnd.mod(d.dex), passive: 10 + dnd.skillBonus(d.wis, d.skills.perception >= 1, d.level, d.skills.perception === 2) };
     }
     const dv = gurps.derived(d);
-    return { system: 'GURPS', name: displayName(c), level: RPG.util.int(d.points), hp: RPG.util.int(d.hpCur), hpMax: dv.HP, speed: String(dv.BasicMove), init: dv.BasicSpeed };
+    return { tsys, system: 'GURPS', name: displayName(c), points: RPG.util.int(d.points), hp: RPG.util.int(d.hpCur), hpMax: dv.HP, speed: String(dv.BasicMove), init: dv.BasicSpeed, dodge: dv.Dodge };
   }
 
   // ---------- Экран 1: выбор игры ----------
