@@ -152,6 +152,34 @@ body.mode-table .wrap { max-width: none; }
   .tbl-side, .tbl-chat { overflow: auto; }
 }
 .tbl-top { grid-area: top; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; }
+.tbl-top .tools-r { display: flex; flex-wrap: wrap; gap: 6px; }
+#tipsToggle[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+.tip-target { outline: 3px solid var(--gold) !important; outline-offset: 2px; animation: tipPulse 1.6s ease-in-out infinite; }
+@keyframes tipPulse { 50% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .tip-target { animation: none; } }
+.tbl-map { position: relative; }
+.ck-panel { position: absolute; right: 8px; top: 48px; z-index: 40; width: min(300px, calc(100% - 16px)); max-height: calc(100% - 60px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 10px; display: grid; gap: 4px; }
+.ck-head { font-family: var(--f-display); font-weight: 600; margin-bottom: 4px; }
+.ck-item { display: flex; gap: 8px; align-items: center; text-align: left; font: inherit; color: var(--ink); background: none; border: 0; border-radius: 6px; padding: 6px; cursor: pointer; }
+.ck-item:hover { background: var(--sunk); }
+.ck-box { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: .8rem; color: var(--muted); }
+.ck-item.done { color: var(--muted); }
+.ck-item.done .ck-box { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ck-foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; border-top: 1px dotted var(--line); padding-top: 8px; }
+.tip { position: fixed; z-index: 60; width: 280px; max-width: calc(100vw - 16px); background: var(--surface); color: var(--ink); border: 2px solid var(--gold); border-radius: var(--r); box-shadow: 0 10px 28px rgba(0,0,0,.25); padding: 10px 12px; font-size: .9rem; line-height: 1.4; animation: tipIn .18s ease-out; }
+.tip-title { font-family: var(--f-display); font-weight: 700; margin-bottom: 4px; }
+.tip-text { margin-bottom: 8px; }
+.tip-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.tip-btns .tb { font-size: .82rem; }
+.tip-arrow { position: absolute; width: 12px; height: 12px; background: var(--surface); border: 2px solid var(--gold); transform: rotate(45deg); }
+.tip-arrow.top { top: -8px; border-right: 0; border-bottom: 0; }
+.tip-arrow.bottom { bottom: -8px; border-left: 0; border-top: 0; }
+.tip-arrow.left { left: -8px; border-right: 0; border-top: 0; }
+.tip-arrow.right { right: -8px; border-left: 0; border-bottom: 0; }
+.tip-arrow.none, .tip.dock .tip-arrow { display: none; }
+.tip.dock { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; max-height: 38vh; overflow: auto; }
+@keyframes tipIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tip { animation: none; } }
 .tbl-top .code { font-family: var(--f-num); font-size: 1.25rem; letter-spacing: .12em; color: var(--accent); }
 .tbl-top .net { font-size: .85rem; color: var(--muted); }
 .tbl-top .sys { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted); }
@@ -385,6 +413,7 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
 <script>/*GURPS*/</script>
 <script>/*TABLE*/</script>
 <script>/*NET*/</script>
+<script>/*TIPS*/</script>
 <script>/*TABLEUI*/</script>
 <script>
 (function () {

@@ -4,6 +4,7 @@
   'use strict';
   const T = root.RPG_TABLE;
   const N = root.RPG_NET;
+  const H = root.RPG_TIPS;
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +20,117 @@
     let k = ls.get('key');
     if (!k) { k = 'p' + Math.random().toString(36).slice(2, 12); ls.set('key', k); }
     return k;
+  }
+
+  // ---------- Подсказки «как в играх» ----------
+  /** Всплывающая карточка со стрелкой к элементу. Не затемняет экран и не закрывает центр карты. */
+  function createTips(el, role, getSys) {
+    let storage = null;
+    try { storage = window.localStorage; } catch (e) { /* недоступно */ }
+    const st = H.store(storage);
+    let prefs = st.load();
+    let cur = null;
+    const recent = [];
+    const box = document.createElement('div');
+    box.className = 'tip'; box.hidden = true;
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-live', 'polite');
+    el.appendChild(box);
+    const shown = (n) => !!n && n.getClientRects().length > 0 && !n.closest('[hidden]');
+    function pick(trigger) {
+      const skip = [];
+      for (let i = 0; i < 50; i++) {
+        const t = H.next(trigger, { role, sys: getSys(), prefs }, skip);
+        if (!t) return null;
+        if (shown($(t.target, el))) return t;
+        skip.push(t.id); // элемента сейчас нет — подождём
+      }
+      return null;
+    }
+    function show(tip) {
+      cur = tip;
+      box.dataset.tip = tip.id;
+      box.innerHTML = `<div class="tip-arrow"></div><div class="tip-title">💡 ${esc(tip.title)}</div><div class="tip-text">${esc(H.textFor(tip, getSys()))}</div>
+        <div class="tip-btns"><button class="tb pri" data-tip-ok>Понятно</button><button class="tb" data-tip-off>Выключить подсказки</button></div>`;
+      box.hidden = false;
+      place();
+    }
+    function mark(n) { $$('.tip-target', el).forEach((x) => { if (x !== n) x.classList.remove('tip-target'); }); if (n) n.classList.add('tip-target'); }
+    function hide() { cur = null; box.hidden = true; mark(null); }
+    function fire(trigger) {
+      const i = recent.indexOf(trigger); if (i >= 0) recent.splice(i, 1);
+      recent.push(trigger);
+      const t = pick(trigger);
+      if (t && (!cur || cur.id !== t.id)) {
+        if (cur) { prefs = H.markSeen(prefs, cur.id); st.save(prefs); } // её уже видели, на экран пришла новая
+        show(t);
+      }
+    }
+    function ok() {
+      if (!cur) return;
+      prefs = H.markSeen(prefs, cur.id); st.save(prefs); hide();
+      for (let i = recent.length - 1; i >= 0; i--) { const t = pick(recent[i]); if (t) { show(t); return; } }
+    }
+    function syncToggle() {
+      const b = $('#tipsToggle', el);
+      if (b) { b.setAttribute('aria-pressed', String(prefs.enabled)); b.textContent = '💡 Подсказки'; b.title = prefs.enabled ? 'Подсказки включены — нажмите, чтобы выключить' : 'Подсказки выключены — нажмите, чтобы включить'; }
+    }
+    function setEnabled(on) { prefs.enabled = on; st.save(prefs); if (!on) hide(); syncToggle(); }
+    function place() {
+      if (!cur) return;
+      const n = $(cur.target, el);
+      if (!shown(n)) { hide(); return; }
+      mark(n);
+      const arrow = $('.tip-arrow', box);
+      if (window.innerWidth < 700) { box.classList.add('dock'); box.style.left = box.style.top = ''; return; }
+      box.classList.remove('dock');
+      const r = n.getBoundingClientRect(), W = window.innerWidth, Hh = window.innerHeight, g = 12;
+      const bw = box.offsetWidth, bh = box.offsetHeight;
+      const clampX = (x) => Math.max(8, Math.min(W - bw - 8, x));
+      const clampY = (y) => Math.max(8, Math.min(Hh - bh - 8, y));
+      const vp = $('#mapVp', el);
+      const m = vp ? vp.getBoundingClientRect() : null;
+      const cx = m ? m.left + m.width / 2 : -1, cy = m ? m.top + m.height / 2 : -1;
+      const cands = [
+        { x: clampX(r.left + r.width / 2 - bw / 2), y: r.bottom + g, side: 'top' },
+        { x: clampX(r.left + r.width / 2 - bw / 2), y: r.top - g - bh, side: 'bottom' },
+        { x: r.right + g, y: clampY(r.top + r.height / 2 - bh / 2), side: 'left' },
+        { x: r.left - g - bw, y: clampY(r.top + r.height / 2 - bh / 2), side: 'right' },
+      ];
+      const fits = (c) => c.x >= 0 && c.y >= 0 && c.x + bw <= W && c.y + bh <= Hh;
+      const free = (c) => !(cx >= c.x && cx <= c.x + bw && cy >= c.y && cy <= c.y + bh);
+      // не закрываем кнопки, которыми пользуются постоянно
+      const busy = $$('.token, .map-tools button, .tabs2 button, .tools-r > *, .tbl-top select, #diceExpr, #diceRoll, .ck-panel:not([hidden])', el)
+        .filter((x) => x !== n && !n.contains(x)).map((x) => x.getBoundingClientRect());
+      const overlap = (c) => busy.reduce((sum, q) => sum + Math.max(0, Math.min(c.x + bw, q.right) - Math.max(c.x, q.left)) * Math.max(0, Math.min(c.y + bh, q.bottom) - Math.max(c.y, q.top)), 0);
+      // запасные места — углы карты под панелью инструментов (цель тогда подсвечивается)
+      if (m) {
+        const mt = $('.map-tools', el); const top = (mt ? mt.getBoundingClientRect().bottom : m.top) + 8;
+        cands.push({ x: m.left + 8, y: top, side: 'none' }, { x: m.right - bw - 8, y: top, side: 'none' },
+          { x: m.left + 8, y: m.bottom - bh - 8, side: 'none' }, { x: m.right - bw - 8, y: m.bottom - bh - 8, side: 'none' });
+      }
+      const dist = (k) => Math.hypot(k.x + bw / 2 - (r.left + r.width / 2), k.y + bh / 2 - (r.top + r.height / 2));
+      const ok = cands.filter((k) => fits(k) && free(k)).map((k) => ({ k, o: overlap(k), d: dist(k) })).sort((a, b) => (a.o - b.o) || (a.d - b.d));
+      const c = (ok[0] && ok[0].k) || cands.find(fits) || { x: clampX(8), y: clampY(Hh - bh - 8), side: 'none' };
+      box.style.left = Math.round(c.x) + 'px'; box.style.top = Math.round(c.y) + 'px';
+      arrow.className = 'tip-arrow ' + c.side;
+      if (c.side === 'top' || c.side === 'bottom') { arrow.style.left = Math.max(12, Math.min(bw - 24, r.left + r.width / 2 - c.x - 6)) + 'px'; arrow.style.top = ''; }
+      else { arrow.style.top = Math.max(12, Math.min(bh - 24, r.top + r.height / 2 - c.y - 6)) + 'px'; arrow.style.left = ''; }
+    }
+    box.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.target.closest('[data-tip-ok]')) ok();
+      else if (e.target.closest('[data-tip-off]')) setEnabled(false);
+    });
+    const onResize = () => place();
+    window.addEventListener('resize', onResize);
+    syncToggle();
+    return {
+      fire, place, hide, syncToggle,
+      toggle() { setEnabled(!prefs.enabled); },
+      reset() { prefs = H.reset(); st.save(prefs); syncToggle(); },
+      once(id) { if (prefs.seen.includes(id)) return false; prefs = H.markSeen(prefs, id); st.save(prefs); return true; },
+      destroy() { window.removeEventListener('resize', onResize); box.remove(); },
+    };
   }
 
   // ---------- Хранилище кампании мастера (IndexedDB, только это устройство) ----------
@@ -95,8 +207,8 @@
       <div class="tbl-top">
         ${gm ? `<div class="room">Код стола: <b id="roomCode" class="code">——</b> <span class="net" id="netState"></span></div>
           <label class="sys">НРИ <select id="tableSystem" aria-label="Во что играем">${Object.entries(T.SYSTEMS).map(([id, x]) => `<option value="${id}">${esc(x.name)}</option>`).join('')}</select></label>
-          <div class="tools-r"><button class="tb" id="campSave">Сохранить в файл</button><label class="tb" for="campLoad">Загрузить</label><input type="file" id="campLoad" accept=".json,application/json" class="sr"></div>`
-        : `<div class="room">Стол мастера · <b id="tableSystemName"></b> <span class="net" id="netState"></span></div><div class="tools-r"><button class="tb" id="leave">Выйти</button></div>`}
+          <div class="tools-r"><button class="tb" id="checklistBtn" aria-expanded="false" aria-controls="checklistPanel">С чего начать · 0/7</button><button class="tb" id="tipsToggle" aria-pressed="true">💡 Подсказки</button><button class="tb" id="campSave">Сохранить в файл</button><label class="tb" for="campLoad">Загрузить</label><input type="file" id="campLoad" accept=".json,application/json" class="sr"></div>`
+        : `<div class="room">Стол мастера · <b id="tableSystemName"></b> <span class="net" id="netState"></span></div><div class="tools-r"><button class="tb" id="tipsToggle" aria-pressed="true">💡 Подсказки</button><button class="tb" id="leave">Выйти</button></div>`}
       </div>
       <section class="tbl-map">
         <div class="map-tools" role="toolbar" aria-label="Инструменты карты">
@@ -116,6 +228,7 @@
           </div>
         </div>
         <div class="map-hint" id="mapHint"></div>
+        ${gm ? '<div class="ck-panel" id="checklistPanel" hidden></div>' : ''}
       </section>
       <aside class="tbl-side">
         <div class="tabs2" role="tablist">${TABS.map(([k, n]) => `<button role="tab" data-tab="${k}" aria-selected="${k === tab}">${n}</button>`).join('')}</div>
@@ -316,9 +429,15 @@
     // ---------- Панели ----------
     el.addEventListener('click', (e) => {
       const tb = e.target.closest('[data-tab]');
-      if (tb) { tab = tb.dataset.tab; $$('[data-tab]', el).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); $$('[data-pane]', el).forEach((p) => { p.hidden = p.dataset.pane !== tab; }); renderPanes(); return; }
+      if (tb) { goTab(tb.dataset.tab); return; }
+      if (e.target.closest('#tipsToggle')) { tips.toggle(); return; }
+      if (e.target.closest('#checklistBtn')) { toggleChecklist(); return; }
+      if (e.target.closest('#tipsReset')) { tips.reset(); toggleChecklist(false); return; }
+      if (e.target.closest('#checklistClose')) { toggleChecklist(false); return; }
+      const ck = e.target.closest('.ck-item');
+      if (ck) { goTab(ck.dataset.goto); return; }
       const tl = e.target.closest('[data-tool]');
-      if (tl) { tool = tl.dataset.tool; $$('[data-tool]', el).forEach((b) => b.setAttribute('aria-pressed', String(b === tl))); hint({ move: '', reveal: 'Выделите область — она откроется игрокам', hide: 'Выделите область — она скроется туманом', measure: 'Потяните, чтобы измерить расстояние' }[tool]); return; }
+      if (tl) { tool = tl.dataset.tool; $$('[data-tool]', el).forEach((b) => b.setAttribute('aria-pressed', String(b === tl))); hint({ move: '', reveal: 'Выделите область — она откроется игрокам', hide: 'Выделите область — она скроется туманом', measure: 'Потяните, чтобы измерить расстояние' }[tool]); if (tool !== 'move') tips.fire('tool:' + tool); return; }
       if (e.target.closest('#zoomIn')) return zoomAt(1.25);
       if (e.target.closest('#zoomOut')) return zoomAt(0.8);
       if (e.target.closest('#zoomFit')) return fit();
@@ -377,6 +496,51 @@
       sel = id;
       if (gm) { tab = 'tokens'; $$('[data-tab]', el).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab))); $$('[data-pane]', el).forEach((p) => { p.hidden = p.dataset.pane !== tab; }); }
       drawMap(); renderPanes();
+      if (gm && id) tips.fire('select:token');
+    }
+    function goTab(k) {
+      if (!k || !$(`[data-tab="${k}"]`, el)) return;
+      tab = k;
+      $$('[data-tab]', el).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+      $$('[data-pane]', el).forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+      renderPanes();
+      tips.fire('tab:' + tab);
+    }
+    function toggleChecklist(force) {
+      const p = $('#checklistPanel', el), b = $('#checklistBtn', el);
+      if (!p) return;
+      const open = force === undefined ? p.hidden : force;
+      p.hidden = !open; b.setAttribute('aria-expanded', String(open));
+    }
+    function drawChecklist(v) {
+      const b = $('#checklistBtn', el), p = $('#checklistPanel', el);
+      if (!b || !p) return;
+      const list = H.checklist(v);
+      const done = list.filter((x) => x.done).length;
+      b.textContent = 'С чего начать · ' + done + '/' + list.length + (done === list.length ? ' ✓' : '');
+      p.innerHTML = `<div class="ck-head">С чего начать</div>${list.map((x, i) => `<button class="ck-item${x.done ? ' done' : ''}" data-step="${x.id}" data-goto="${x.tab}"><span class="ck-box" aria-hidden="true">${x.done ? '✓' : i + 1}</span>${esc(x.title)}<span class="sr">${x.done ? ' — готово' : ''}</span></button>`).join('')}
+        <div class="ck-foot"><button class="tb" id="tipsReset">Показать подсказки заново</button><button class="tb" id="checklistClose">Свернуть</button></div>`;
+    }
+    const tips = createTips(el, gm ? 'gm' : 'player', () => T.systemOf(view));
+    let opened = false, prevCombat = null, prevPlayers = null, prevMyTurn = null;
+    el.addEventListener('focusin', (e) => { if (e.target.id === 'diceExpr') tips.fire('focus:dice'); });
+    /** События для подсказок: начало боя, первый игрок, ход игрока. */
+    function watch(v) {
+      const active = !!(v.combat && v.combat.active);
+      const players = Object.keys(v.players || {}).length;
+      const cur = T.combat.current(v);
+      const sc = T.activeScene(v);
+      const tk = cur && sc ? sc.tokens.find((t) => t.id === cur.tokenId) : null;
+      const myTurn = !gm && !!(tk && tk.owner === ctx.me());
+      if (prevCombat === false && active && gm) setTimeout(() => tips.fire('combat:start'), 50);
+      if (prevPlayers === 0 && players > 0 && gm) tips.fire('player:first');
+      if (prevMyTurn === false && myTurn) tips.fire('turn:mine');
+      prevCombat = active; prevPlayers = players; prevMyTurn = myTurn;
+      if (!opened) {
+        opened = true;
+        if (gm && window.innerWidth >= 700 && tips.once('checklist-shown')) toggleChecklist(true); // на телефоне не закрываем карту — туда укажет подсказка
+        setTimeout(() => tips.fire('open'), 300);
+      }
     }
     function renderPanes() {
       if (!view) return;
@@ -399,7 +563,9 @@
         drawSystem();
         if (sel && !(scene() && scene().tokens.some((t) => t.id === sel))) sel = null;
         drawMap(); drawChat(); renderPanes();
+        drawChecklist(v); watch(v); tips.place();
       },
+      destroyTips() { tips.destroy(); },
       setNet(text, ok) { const n = $('#netState', el); if (n) { n.textContent = text; n.className = 'net ' + (ok ? 'ok' : 'off'); } },
     };
     $$('[data-tool]', el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)));
@@ -480,12 +646,18 @@
       onChange: (e, b) => gmChange(e, b),
     });
 
+    const write = () => { saveTimer = null; return kv('readwrite', (st) => st.put({ state: host.state, assets: host.assets, code }, 'campaign')).catch(() => board.flash('netState', 'Не удалось сохранить на устройстве — выгрузите файл')); };
+    let lastWrite = 0;
+    /** Первое изменение после паузы пишется сразу, частые (перетаскивание) — пачкой через 400 мс. */
     function save() {
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        kv('readwrite', (st) => st.put({ state: host.state, assets: host.assets, code }, 'campaign')).catch(() => board.flash('netState', 'Не удалось сохранить на устройстве — выгрузите файл'));
-      }, 400);
+      if (Date.now() - lastWrite > 1000) { lastWrite = Date.now(); write(); return; }
+      saveTimer = setTimeout(() => { lastWrite = Date.now(); write(); }, 400);
     }
+    // уходя со страницы — сохранить сразу, не дожидаясь паузы
+    const flush = () => { if (saveTimer && host) { clearTimeout(saveTimer); write(); } };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', flush);
     function start(saved) {
       code = (saved && saved.code) || N.roomCode();
       const st = (saved && saved.state) || T.newState();
@@ -669,7 +841,7 @@
         board.setNet('· кампания загружена', true);
       }
     }
-    return { destroy() { destroyed = true; clearTimeout(saveTimer); if (host) host.close(); else multi.close(); } };
+    return { destroy() { destroyed = true; flush(); window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', flush); board.destroyTips(); if (host) host.close(); else multi.close(); } };
   }
 
   // ======================================================================
@@ -758,7 +930,7 @@
       }
       if (q('#leave')) { client.close(); if (opts.onLeave) opts.onLeave(); }
     }
-    return { destroy() { client.close(); } };
+    return { destroy() { board.destroyTips(); client.close(); } };
   }
 
   root.RPG_TABLE_UI = { mountGM, mountPlayer, connectPlayer, myKey, ls };

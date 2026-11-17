@@ -9,6 +9,7 @@ const out = src('app.html')
   .replace('/*GURPS*/', () => src('gurps-data.js'))
   .replace('/*TABLE*/', () => src('table.js'))
   .replace('/*NET*/', () => src('net.js'))
+  .replace('/*TIPS*/', () => src('tips.js'))
   .replace('/*TABLEUI*/', () => src('table-ui.js'));
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'), out);
