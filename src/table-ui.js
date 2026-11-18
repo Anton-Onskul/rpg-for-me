@@ -56,8 +56,11 @@
     function mark(n) { $$('.tip-target', el).forEach((x) => { if (x !== n) x.classList.remove('tip-target'); }); if (n) n.classList.add('tip-target'); }
     function hide() { cur = null; box.hidden = true; mark(null); }
     /** Подсказка места: показывается при каждом заходе, пока не нажали «Понятно». Ушли с вкладки — прячется. */
+    let busyUser = false;
     function fire(trigger) {
-      if (trigger === 'open' && cur) return; // стартовая не перебивает подсказку места, где человек уже работает
+      // стартовая не перебивает подсказку места и не всплывает, если человек уже начал работать
+      if (trigger === 'open' && (cur || busyUser)) return;
+      if (trigger !== 'open') busyUser = true;
       const t = pick(trigger);
       if (t) { if (!cur || cur.id !== t.id) show(t); return; }
       if (/^tab:/.test(trigger)) hide();
