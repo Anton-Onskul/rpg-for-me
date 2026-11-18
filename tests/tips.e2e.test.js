@@ -78,10 +78,12 @@ test('мастер: подсказка появляется сама, не ме�
   assert.match(await page.textContent('.tip .tip-text'), /КД/, 'D&D: про КД');
   await closeTip(page);
 
+  // Требование от 18.11: увиденной считается подсказка, на которой нажали «Понятно» (а не просто перебитая другой).
   await page.reload();
   await page.waitForSelector('#tbl');
-  await page.waitForTimeout(600);
-  assert.notEqual(await tipId(page), first, 'увиденная подсказка не повторяется после перезагрузки');
+  await page.click('[data-tab="tokens"]');
+  await page.waitForTimeout(500);
+  assert.notEqual(await tipId(page), second, 'подсказка с «Понятно» не повторяется после перезагрузки');
   assert.deepEqual(errors, []);
   await context.close();
 });

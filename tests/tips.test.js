@@ -109,3 +109,20 @@ test('отметить и сбросить', () => {
   assert.deepEqual(p.seen, ['gm-open'], 'без повторов');
   assert.deepEqual(H.reset({ enabled: false, seen: ['a'] }), { enabled: true, seen: [] });
 });
+
+test('новые подсказки: как отдать героя игроку, туман по обзору, эффекты, «Двигать» и карточка у игрока', () => {
+  const by = (id) => H.TIPS.find((t) => t.id === id);
+  const give = by('gm-give-hero');
+  assert.ok(give, 'есть подсказка «как отдать героя игроку»');
+  assert.match(H.textFor(give, 'dnd2014'), /«Управляет»/);
+  assert.match(give.title, /игрок/i);
+  for (const [id, on, role] of [['gm-vision', 'fog:vision', 'gm'], ['gm-effects', 'combat:effects', 'gm'], ['pl-move', 'tool:move', 'player'], ['pl-card', 'card:show', 'player']]) {
+    const t = by(id);
+    assert.ok(t, 'нет подсказки ' + id);
+    assert.equal(t.on, on); assert.equal(t.role, role);
+  }
+  assert.match(H.textFor(by('gm-vision'), 'dnd2014'), /фут/);
+  assert.match(H.textFor(by('gm-vision'), 'gurps'), /ярд/);
+  assert.match(H.textFor(by('pl-card'), 'dnd2014'), /хит/i);
+  assert.match(H.textFor(by('pl-card'), 'munchkin'), /уровень/i);
+});

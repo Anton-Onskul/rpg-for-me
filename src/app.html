@@ -249,7 +249,42 @@ body.mode-table .wrap { max-width: none; }
 .tbl .x { border: 0; background: none; color: var(--bad); cursor: pointer; font-size: .9rem; }
 .tbl .lnk { border: 0; background: none; color: var(--ink); text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
 .tbl .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
-.tbl .cb { display: flex; gap: 6px; align-items: center; padding: 5px 6px; border-radius: 7px; background: var(--sunk); margin-bottom: 4px; }
+.tbl .cb { display: grid; gap: 4px; padding: 6px; border-radius: 7px; background: var(--sunk); margin-bottom: 5px; }
+.tbl .cb-top { display: flex; gap: 6px; align-items: center; }
+.tbl .cb-hp { height: 7px; border-radius: 4px; background: rgba(0,0,0,.12); overflow: hidden; }
+.tbl .cb-hp i { display: block; height: 100%; background: var(--ok); transition: width .2s; }
+.tbl .cb-hp.hurt i { background: var(--gold); }
+.tbl .cb-hp.crit i { background: var(--accent); }
+.tbl .cb-stats { display: flex; flex-wrap: wrap; gap: 3px 6px; font-size: .78rem; }
+.tbl .cb-stats .st { padding: 1px 6px; border-radius: 5px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+.tbl .cb-stats .st b { color: var(--ink); font-family: var(--f-num); }
+.tbl .cb-fx { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: .8rem; }
+.tbl .fx { display: inline-flex; align-items: center; gap: 3px; padding: 1px 4px 1px 8px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.tbl .fx b { font-family: var(--f-num); }
+.tbl .fx .x { padding: 0 4px; }
+.tbl .fx-new { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.tbl .fx-new select, .tbl .fx-new input { font: inherit; font-size: .8rem; padding: 2px 4px; max-width: 8.5em; }
+.tbl .fx-new .fx-rounds { width: 5.5em; }
+.tbl .fx-new .tb { padding: 2px 8px; }
+.tbl details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.turn-strip { position: absolute; left: 8px; top: 48px; z-index: 30; max-width: calc(100% - 16px); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 5px 8px; border-radius: 10px; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); box-shadow: 0 4px 12px rgba(0,0,0,.15); font-size: .82rem; pointer-events: none; }
+.turn-strip .ts-round { margin-right: 4px; }
+.turn-strip .ts-item { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 8px; }
+.turn-strip .ts-item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.turn-strip .ts-item.cur { background: var(--gold); color: #1b1b1b; font-weight: 700; }
+.turn-strip .ts-item.me:not(.cur) { text-decoration: underline; }
+.hero-card { border: 2px solid var(--line); border-radius: var(--r); padding: 8px 10px; display: grid; gap: 6px; background: var(--sunk); }
+.hero-card.turn { border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 30%, transparent); }
+.hero-card .hc-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.hero-card .hc-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.hero-card .hc-f { display: grid; gap: 1px; font-size: .78rem; color: var(--muted); }
+.hero-card .hc-f b { font-size: 1rem; color: var(--ink); font-family: var(--f-num); }
+.hero-card .hc-f { grid-template-columns: auto auto; justify-content: start; align-items: center; column-gap: 4px; }
+.hero-card .hc-f > span { grid-column: 1 / -1; }
+.hero-card .hc-f input { width: 4.2em !important; font: inherit; font-size: 1rem; font-family: var(--f-num); padding: 2px 4px; }
+.hero-card .hc-f i { font-style: normal; color: var(--ink); font-family: var(--f-num); }
+.tbl #myInitMod { width: 4.5em !important; flex: none; }
+.hero-card .big { width: 100%; padding: 10px; font-size: 1rem; }
 .tbl .cb.now { outline: 2px solid var(--gold); }
 .tbl .cb .nm { flex: 1; min-width: 0; }
 .tbl .cb .hp { font-family: var(--f-num); font-size: .8rem; color: var(--muted); }

@@ -83,18 +83,18 @@
   const DND_FIELDS = [{ key: 'hp', label: 'Хиты' }, { key: 'hpMax', label: 'из' }, { key: 'ac', label: 'КД' }];
   const SYSTEMS = {
     dnd2014: { name: 'D&D 5e (2014)', sheet: { system: 'dnd5e', edition: '2014' }, cell: { size: 5, unit: 'фт', text: (n) => n + ' фт' },
-      fields: DND_FIELDS, hp: true, init: { label: 'Бонус инициативы', roll: '1к20' },
+      fields: DND_FIELDS, hp: true, self: ['hp'], vision: 30, init: { label: 'Бонус инициативы', roll: '1к20' },
       dice: { quick: D20, advantage: true, skill: false, placeholder: '1к20+5, 2к6, 1к20 преим' } },
     dnd2024: { name: 'D&D 5e (2024)', sheet: { system: 'dnd5e', edition: '2024' }, cell: { size: 5, unit: 'фт', text: (n) => n + ' фт' },
-      fields: DND_FIELDS, hp: true, init: { label: 'Бонус инициативы', roll: '1к20' },
+      fields: DND_FIELDS, hp: true, self: ['hp'], vision: 30, init: { label: 'Бонус инициативы', roll: '1к20' },
       dice: { quick: D20, advantage: true, skill: false, placeholder: '1к20+5, 2к6, 1к20 преим' } },
     gurps: { name: 'GURPS 4e', sheet: { system: 'gurps4e' }, cell: { size: 1, unit: 'ярд', text: (n) => n + ' ярд.' },
       fields: [{ key: 'hp', label: 'ЕЖ' }, { key: 'hpMax', label: 'из' }, { key: 'dr', label: 'СП' }, { key: 'dodge', label: 'Уклонение' }, { key: 'move', label: 'Движение' }],
-      hp: true, init: { label: 'Базовая скорость', roll: null },
+      hp: true, self: ['hp'], vision: 10, init: { label: 'Базовая скорость', roll: null },
       dice: { quick: [6], advantage: false, skill: true, placeholder: '3к6, 2к6+1 (урон)' } },
     munchkin: { name: 'Манчкин', sheet: { system: 'munchkin' }, cell: { size: 1, unit: 'кл.', text: (n) => n + ' кл.' },
       fields: [{ key: 'level', label: 'Уровень', public: true }, { key: 'bonus', label: 'Бонус' }],
-      hp: false, init: { label: 'Бонус', roll: '1к6' },
+      hp: false, self: ['level', 'bonus'], vision: 3, init: { label: 'Бонус', roll: '1к6' },
       dice: { quick: [6], advantage: false, skill: false, placeholder: '1к6' } },
   };
   const systemOf = (s) => (s && SYSTEMS[s.system] ? s.system : 'dnd2014');
@@ -106,7 +106,15 @@
     if (c.system === 'munchkin') return 'munchkin';
     return null;
   };
-  const STAT_KEYS = ['hp', 'hpMax', 'ac', 'dr', 'dodge', 'move', 'level', 'bonus'];
+  const STAT_KEYS = ['hp', 'hpMax', 'ac', 'dr', 'dodge', 'move', 'level', 'bonus', 'vision'];
+  /** Эффекты (состояния) для боя — готовые списки под НРИ; мастер может вписать и свой. */
+  const DND_FX = ['Ослеплён', 'Очарован', 'Оглохший', 'Испуган', 'Схвачен', 'Недееспособен', 'Невидим', 'Парализован', 'Окаменевший',
+    'Отравлен', 'Сбит с ног', 'Опутан', 'Ошеломлён', 'Без сознания', 'Истощение', 'Концентрация', 'Благословение'];
+  const EFFECTS = {
+    dnd2014: DND_FX, dnd2024: DND_FX,
+    gurps: ['Шок', 'Оглушён', 'Сбит с ног', 'Лежит', 'Ослеплён', 'Без сознания', 'Кровотечение', 'Тошнота', 'Боль', 'Полная защита', 'Всё в атаку'],
+    munchkin: ['Проклятие', 'Временный бонус', 'Помощник', 'Убегает', 'Отказ в помощи'],
+  };
 
   // ---------- Сетка ----------
   const grid = {
@@ -135,6 +143,35 @@
   const fog = {
     isRevealed(scene, cell) {
       return !!scene && scene.fog.revealed.includes(cell.c + ',' + cell.r);
+    },
+    /** Клетки, которые сейчас видят герои (фишки «герой»): круг радиуса обзора. Радиус — в единицах НРИ. */
+    visibleCells(scene, sys) {
+      const out = new Set();
+      if (!scene) return out;
+      const f = scene.fog || {};
+      const unit = (SYSTEMS[sys] || SYSTEMS.dnd2014).cell.size;
+      const g = scene.grid;
+      const cols = Math.ceil(scene.w / g.size), rows = Math.ceil(scene.h / g.size);
+      for (const t of scene.tokens) {
+        if (t.kind !== 'pc' || t.hidden) continue;
+        const radius = t.vision != null && t.vision >= 0 ? t.vision : num(f.radius, 0);
+        const R = radius / unit;
+        const o = grid.cellOf(t.x, t.y, g);
+        const k = Math.floor(R);
+        for (let dc = -k; dc <= k; dc++) for (let dr = -k; dr <= k; dr++) {
+          const c = o.c + dc, r = o.r + dr;
+          if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
+          if (dc * dc + dr * dr <= R * R + 1e-9) out.add(c + ',' + r);
+        }
+      }
+      return out;
+    },
+    /** 'visible' — видно сейчас или открыто мастером, 'explored' — герои тут были, 'hidden' — туман. */
+    cellState(scene, cell, vis) {
+      const k = cell.c + ',' + cell.r;
+      if ((vis && vis.has(k)) || scene.fog.revealed.includes(k)) return 'visible';
+      if ((scene.fog.explored || []).includes(k)) return 'explored';
+      return 'hidden';
     },
     cells(rect) {
       const out = [];
@@ -214,7 +251,7 @@
         id: nextId(s, 'sc'), name: str(sc.name, 60) || 'Сцена', w: clampN(num(sc.w, 1500), 200, 10000), h: clampN(num(sc.h, 1000), 200, 10000),
         image: sc.image || null,
         grid: Object.assign({ size: 50, offsetX: 0, offsetY: 0, show: true }, sc.grid || {}),
-        fog: { enabled: false, revealed: [] }, tokens: [],
+        fog: { enabled: false, mode: 'manual', radius: SYSTEMS[systemOf(s)].vision, revealed: [], explored: [] }, tokens: [],
       };
       s.scenes.push(scene);
       if (!s.activeSceneId) s.activeSceneId = scene.id;
@@ -255,13 +292,14 @@
       if (!isGM(act)) return 'Только мастер добавляет фишки';
       const sc = a.sceneId ? s.scenes.find((x) => x.id === a.sceneId) : activeScene(s);
       if (!sc) return 'Сначала создайте сцену';
-      const t = Object.assign({ name: 'Фишка', kind: 'npc', owner: null, size: 1, hp: null, hpMax: null, ac: null, hidden: false, img: null, note: '' },
+      const t = Object.assign({ name: 'Фишка', kind: 'npc', owner: null, size: 1, hp: null, hpMax: null, ac: null, hidden: false, img: null, note: '', effects: [] },
         cleanToken(a.token || {}, s, sc));
       t.id = nextId(s, 't');
       if (!t.color) t.color = COLORS[(s.seq) % COLORS.length];
       const p = grid.snap(clampN(num(a.token && a.token.x, sc.grid.size / 2), 0, sc.w - 1), clampN(num(a.token && a.token.y, sc.grid.size / 2), 0, sc.h - 1), sc.grid);
       t.x = p.x; t.y = p.y;
       sc.tokens.push(t);
+      if (t.kind === 'pc') explore(s, sc);
       return null;
     },
     'token.move'(s, a, act) {
@@ -272,6 +310,7 @@
       if (!(x >= 0 && y >= 0 && x < f.scene.w && y < f.scene.h)) return 'За краем карты';
       const p = grid.snap(x, y, f.scene.grid);
       f.token.x = p.x; f.token.y = p.y;
+      if (f.token.kind === 'pc') explore(s, f.scene);
       return null;
     },
     'token.update'(s, a, act) {
@@ -279,6 +318,45 @@
       if (!f) return 'Фишка не найдена';
       if (!isGM(act)) return 'Только мастер меняет фишки';
       Object.assign(f.token, cleanToken(a.patch || {}, s, f.scene));
+      if (f.token.kind === 'pc') explore(s, f.scene);
+      return null;
+    },
+    /** Игрок правит своего героя: только поля из SYSTEMS[..].self (хиты; в Манчкине — уровень и бонус). */
+    'token.self'(s, a, act) {
+      const f = findToken(s, a.tokenId);
+      if (!f) return 'Фишка не найдена';
+      if (!isGM(act) && !ownsToken(act, f.token)) return 'Можно менять только своего героя';
+      const sid = systemOf(s), t = f.token, p = a.patch || {};
+      for (const k of SYSTEMS[sid].self) {
+        if (!(k in p) || p[k] === '' || p[k] == null) continue;
+        let v = Math.round(num(p[k], NaN));
+        if (!Number.isFinite(v)) continue;
+        if (k === 'hp') v = clampN(v, sid === 'gurps' ? -5 * (t.hpMax || 10) : 0, t.hpMax != null ? t.hpMax : 9999);
+        if (k === 'level') v = clampN(v, 1, 10);
+        if (k === 'bonus') v = clampN(v, -50, 100);
+        t[k] = v;
+      }
+      return null;
+    },
+    'effect.add'(s, a, act) {
+      if (!isGM(act)) return 'Эффекты назначает мастер';
+      const f = findToken(s, a.tokenId);
+      if (!f) return 'Фишка не найдена';
+      const name = str(a.name, 40);
+      if (!name) return 'Назовите эффект';
+      let rounds = null;
+      if (a.rounds !== '' && a.rounds != null) {
+        rounds = Math.round(num(a.rounds, NaN));
+        if (!(rounds >= 1 && rounds <= 1000)) return 'Длительность — целое число раундов от 1 (или пусто — без срока)';
+      }
+      f.token.effects = (f.token.effects || []).concat([{ id: nextId(s, 'fx'), name, rounds }]).slice(-20);
+      return null;
+    },
+    'effect.remove'(s, a, act) {
+      if (!isGM(act)) return 'Эффекты снимает мастер';
+      const f = findToken(s, a.tokenId);
+      if (!f) return 'Фишка не найдена';
+      f.token.effects = (f.token.effects || []).filter((e) => e.id !== a.effectId);
       return null;
     },
     'token.remove'(s, a, act) {
@@ -296,7 +374,14 @@
       if (!isGM(act)) return 'Только мастер управляет туманом';
       const sc = a.sceneId ? s.scenes.find((x) => x.id === a.sceneId) : activeScene(s);
       if (!sc) return 'Сцена не найдена';
-      sc.fog.enabled = !!a.enabled;
+      normFog(sc, systemOf(s));
+      if ('enabled' in a) sc.fog.enabled = !!a.enabled;
+      if ('mode' in a) {
+        if (a.mode !== 'manual' && a.mode !== 'vision') return 'Неизвестный режим тумана';
+        sc.fog.mode = a.mode;
+      }
+      if ('radius' in a) sc.fog.radius = clampN(Math.round(num(a.radius, sc.fog.radius || 0)), 0, 1000);
+      explore(s, sc);
       return null;
     },
     'fog.reveal'(s, a, act) { return fogEdit(s, a, act, true); },
@@ -339,7 +424,7 @@
       if (!isGM(act) && !(f && ownsToken(act, f.token))) return 'Сейчас не ваш ход';
       s.combat.moved = true;
       s.combat.turn++;
-      if (s.combat.turn >= s.combat.order.length) { s.combat.turn = 0; s.combat.round++; }
+      if (s.combat.turn >= s.combat.order.length) { s.combat.turn = 0; s.combat.round++; tickEffects(s); }
       return null;
     },
     'combat.prev'(s, a, act) {
@@ -418,6 +503,34 @@
     },
   };
 
+  /** Новый раунд: срок эффектов участников боя уменьшается, истёкшие снимаются с записью в чат. */
+  function tickEffects(s) {
+    for (const o of s.combat.order) {
+      const f = findToken(s, o.tokenId);
+      if (!f || !f.token.effects || !f.token.effects.length) continue;
+      const keep = [];
+      for (const e of f.token.effects) {
+        if (e.rounds == null) { keep.push(e); continue; }
+        e.rounds -= 1;
+        if (e.rounds > 0) keep.push(e);
+        else pushChat(s, { from: 'Стол', fromId: null, gm: true, text: `Эффект «${e.name}» закончился: ${f.token.name}`, gmOnly: f.token.kind !== 'pc' || !!f.token.hidden });
+      }
+      f.token.effects = keep;
+    }
+  }
+  /** Туман по обзору: всё, что видят герои, становится исследованным. */
+  function explore(s, sc) {
+    if (!sc || !sc.fog || sc.fog.mode !== 'vision') return;
+    const set = new Set(sc.fog.explored || []);
+    fog.visibleCells(sc, systemOf(s)).forEach((k) => set.add(k));
+    sc.fog.explored = Array.from(set);
+  }
+  function normFog(sc, sys) {
+    sc.fog = Object.assign({ enabled: false, mode: 'manual', radius: SYSTEMS[sys].vision, revealed: [], explored: [] }, sc.fog || {});
+    if (sc.fog.mode !== 'vision') sc.fog.mode = 'manual';
+    if (!Array.isArray(sc.fog.explored)) sc.fog.explored = [];
+    return sc;
+  }
   function fogEdit(s, a, act, reveal) {
     if (!isGM(act)) return 'Только мастер управляет туманом';
     const sc = a.sceneId ? s.scenes.find((x) => x.id === a.sceneId) : activeScene(s);
@@ -427,6 +540,7 @@
     const set = new Set(sc.fog.revealed);
     for (const c of cells) { if (reveal) set.add(c); else set.delete(c); }
     sc.fog.revealed = Array.from(set);
+    if (!reveal && sc.fog.explored) { const del = new Set(cells); sc.fog.explored = sc.fog.explored.filter((k) => !del.has(k)); }
     return null;
   }
   function pushChat(s, msg) {
@@ -455,10 +569,12 @@
     s.scenes = sc ? [sc] : [];
     const visible = new Set();
     if (sc) {
+      normFog(sc, systemOf(s));
+      const vis = sc.fog.mode === 'vision' ? fog.visibleCells(sc, systemOf(s)) : new Set();
       sc.tokens = sc.tokens.filter((t) => {
         if (t.hidden) return false;
         if (t.kind === 'pc') return true;
-        if (sc.fog.enabled && !fog.isRevealed(sc, grid.cellOf(t.x, t.y, sc.grid))) return false;
+        if (sc.fog.enabled && fog.cellState(sc, grid.cellOf(t.x, t.y, sc.grid), vis) !== 'visible') return false;
         return true;
       }).map((t) => {
         if (t.kind === 'pc') return t;
@@ -496,9 +612,10 @@
     const base = newState(o.state.system);
     const state = Object.assign(base, o.state, { combat: Object.assign(base.combat, o.state.combat || {}) });
     state.system = systemOf(state);
+    state.scenes.forEach((sc) => { normFog(sc, state.system); (sc.tokens || []).forEach((t) => { if (!Array.isArray(t.effects)) t.effects = []; }); });
     return { ok: true, state, assets: o.assets || {} };
   }
 
-  const API = { SYSTEMS, systemOf, sheetSystem, dice, grid, fog, combat, health, newState, apply, viewFor, activeScene, findToken, exportCampaign, importCampaign };
+  const API = { SYSTEMS, EFFECTS, normFog, systemOf, sheetSystem, dice, grid, fog, combat, health, newState, apply, viewFor, activeScene, findToken, exportCampaign, importCampaign };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.RPG_TABLE = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

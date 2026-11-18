@@ -30,7 +30,6 @@
     const st = H.store(storage);
     let prefs = st.load();
     let cur = null;
-    const recent = [];
     const box = document.createElement('div');
     box.className = 'tip'; box.hidden = true;
     box.setAttribute('role', 'dialog'); box.setAttribute('aria-live', 'polite');
@@ -56,19 +55,19 @@
     }
     function mark(n) { $$('.tip-target', el).forEach((x) => { if (x !== n) x.classList.remove('tip-target'); }); if (n) n.classList.add('tip-target'); }
     function hide() { cur = null; box.hidden = true; mark(null); }
+    /** Подсказка места: показывается при каждом заходе, пока не нажали «Понятно». Ушли с вкладки — прячется. */
     function fire(trigger) {
-      const i = recent.indexOf(trigger); if (i >= 0) recent.splice(i, 1);
-      recent.push(trigger);
+      if (trigger === 'open' && cur) return; // стартовая не перебивает подсказку места, где человек уже работает
       const t = pick(trigger);
-      if (t && (!cur || cur.id !== t.id)) {
-        if (cur) { prefs = H.markSeen(prefs, cur.id); st.save(prefs); } // её уже видели, на экран пришла новая
-        show(t);
-      }
+      if (t) { if (!cur || cur.id !== t.id) show(t); return; }
+      if (/^tab:/.test(trigger)) hide();
     }
     function ok() {
       if (!cur) return;
+      const where = cur.on;
       prefs = H.markSeen(prefs, cur.id); st.save(prefs); hide();
-      for (let i = recent.length - 1; i >= 0; i--) { const t = pick(recent[i]); if (t) { show(t); return; } }
+      const t = pick(where); // следующая — только для того же места
+      if (t) show(t);
     }
     function syncToggle() {
       const b = $('#tipsToggle', el);
@@ -99,7 +98,7 @@
       const fits = (c) => c.x >= 0 && c.y >= 0 && c.x + bw <= W && c.y + bh <= Hh;
       const free = (c) => !(cx >= c.x && cx <= c.x + bw && cy >= c.y && cy <= c.y + bh);
       // не закрываем кнопки, которыми пользуются постоянно
-      const busy = $$('.token, .map-tools button, .tabs2 button, .tools-r > *, .tbl-top select, #diceExpr, #diceRoll, .ck-panel:not([hidden])', el)
+      const busy = $$('.token, .map-tools button, .tabs2 button, .pane:not([hidden]) button, .pane:not([hidden]) input, .pane:not([hidden]) select, .hero-card, .tools-r > *, .tbl-top select, #diceExpr, #diceRoll, .ck-panel:not([hidden])', el)
         .filter((x) => x !== n && !n.contains(x)).map((x) => x.getBoundingClientRect());
       const overlap = (c) => busy.reduce((sum, q) => sum + Math.max(0, Math.min(c.x + bw, q.right) - Math.max(c.x, q.left)) * Math.max(0, Math.min(c.y + bh, q.bottom) - Math.max(c.y, q.top)), 0);
       // запасные места — углы карты под панелью инструментов (цель тогда подсвечивается)
@@ -127,7 +126,7 @@
     return {
       fire, place, hide, syncToggle,
       toggle() { setEnabled(!prefs.enabled); },
-      reset() { prefs = H.reset(); st.save(prefs); syncToggle(); },
+      reset(trigger) { prefs = H.reset(); st.save(prefs); syncToggle(); hide(); if (trigger) fire(trigger); },
       once(id) { if (prefs.seen.includes(id)) return false; prefs = H.markSeen(prefs, id); st.save(prefs); return true; },
       destroy() { window.removeEventListener('resize', onResize); box.remove(); },
     };
@@ -228,6 +227,7 @@
           </div>
         </div>
         <div class="map-hint" id="mapHint"></div>
+        <div class="turn-strip" id="turnStrip" hidden aria-live="polite"></div>
         ${gm ? '<div class="ck-panel" id="checklistPanel" hidden></div>' : ''}
       </section>
       <aside class="tbl-side">
@@ -246,6 +246,7 @@
         </div>
         <div class="chat-log" id="chatLog" aria-live="polite"></div>
         <div class="row"><label class="sr" for="chatText">Сообщение</label><input id="chatText" placeholder="Сообщение…" autocomplete="off"><button class="tb" id="chatSend">→</button></div>
+        ${gm ? '' : '<section class="hero-card" id="heroCard" hidden aria-label="Карточка героя"></section>'}
       </aside>
     </div>`;
 
@@ -342,10 +343,14 @@
       c2.fillStyle = gm ? 'rgba(10,12,20,.55)' : '#0a0c14';
       c2.fillRect(0, 0, sc.w, sc.h);
       const g = sc.grid;
-      for (const k of sc.fog.revealed) {
-        const [c, r] = k.split(',').map(Number);
-        c2.clearRect(c * g.size + (g.offsetX || 0), r * g.size + (g.offsetY || 0), g.size, g.size);
+      const at = (k) => { const [c, r] = k.split(',').map(Number); return [c * g.size + (g.offsetX || 0), r * g.size + (g.offsetY || 0), g.size, g.size]; };
+      if (sc.fog.mode === 'vision') {
+        // где герои были — полупрозрачно; что видят сейчас и что открыл мастер — чисто
+        c2.fillStyle = gm ? 'rgba(10,12,20,.25)' : 'rgba(10,12,20,.6)';
+        for (const k of sc.fog.explored || []) { const r = at(k); c2.clearRect(...r); c2.fillRect(...r); }
+        T.fog.visibleCells(sc, sysId()).forEach((k) => c2.clearRect(...at(k)));
       }
+      for (const k of sc.fog.revealed) c2.clearRect(...at(k));
     }
 
     // ---------- Мышь и палец на карте ----------
@@ -432,12 +437,12 @@
       if (tb) { goTab(tb.dataset.tab); return; }
       if (e.target.closest('#tipsToggle')) { tips.toggle(); return; }
       if (e.target.closest('#checklistBtn')) { toggleChecklist(); return; }
-      if (e.target.closest('#tipsReset')) { tips.reset(); toggleChecklist(false); return; }
+      if (e.target.closest('#tipsReset')) { toggleChecklist(false); tips.reset('tab:' + tab); return; }
       if (e.target.closest('#checklistClose')) { toggleChecklist(false); return; }
       const ck = e.target.closest('.ck-item');
       if (ck) { goTab(ck.dataset.goto); return; }
       const tl = e.target.closest('[data-tool]');
-      if (tl) { tool = tl.dataset.tool; $$('[data-tool]', el).forEach((b) => b.setAttribute('aria-pressed', String(b === tl))); hint({ move: '', reveal: 'Выделите область — она откроется игрокам', hide: 'Выделите область — она скроется туманом', measure: 'Потяните, чтобы измерить расстояние' }[tool]); if (tool !== 'move') tips.fire('tool:' + tool); return; }
+      if (tl) { tool = tl.dataset.tool; $$('[data-tool]', el).forEach((b) => b.setAttribute('aria-pressed', String(b === tl))); hint({ move: '', reveal: 'Выделите область — она откроется игрокам', hide: 'Выделите область — она скроется туманом', measure: 'Потяните, чтобы измерить расстояние' }[tool]); if (tool !== 'move' || !gm) tips.fire('tool:' + tool); return; }
       if (e.target.closest('#zoomIn')) return zoomAt(1.25);
       if (e.target.closest('#zoomOut')) return zoomAt(0.8);
       if (e.target.closest('#zoomFit')) return fit();
@@ -446,6 +451,7 @@
       if (e.target.closest('[data-die3]')) { $('#diceExpr', el).value = '3к6'; roll(); return; }
       if (e.target.closest('#diceRoll')) return roll();
       if (e.target.closest('#chatSend')) return say();
+      if (e.target.closest('#heroEndTurn')) { act({ type: 'combat.next' }); return; }
       if (ctx.onClick) ctx.onClick(e, api);
     });
     el.addEventListener('keydown', (e) => {
@@ -453,7 +459,58 @@
       if (e.target.id === 'diceExpr' || e.target.id === 'diceSkill') { e.preventDefault(); roll(); }
       if (e.target.id === 'chatText') { e.preventDefault(); say(); }
     });
-    el.addEventListener('change', (e) => { if (ctx.onChange) ctx.onChange(e, api); });
+    el.addEventListener('change', (e) => {
+      const f = e.target.dataset && e.target.dataset.self;
+      if (f) { const t = myToken(); if (t) act({ type: 'token.self', tokenId: t.id, patch: { [f]: e.target.value } }); return; }
+      if (ctx.onChange) ctx.onChange(e, api);
+    });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.self) e.target.blur(); });
+    // сворачивание блоков <details> запоминаем (событие toggle не всплывает — ловим на погружении)
+    const folded = {};
+    el.addEventListener('toggle', (e) => { if (e.target.id) folded[e.target.id] = !e.target.open; }, true);
+    function myToken() {
+      const sc = scene(); if (!sc || gm) return null;
+      return sc.tokens.find((t) => t.owner && t.owner === ctx.me()) || null;
+    }
+    /** Полоса очереди ходов над картой: раунд и участники по порядку. */
+    function drawTurnStrip(v) {
+      const n = $('#turnStrip', el); const sc = T.activeScene(v);
+      if (!v.combat.active || !v.combat.order.length) { n.hidden = true; n.innerHTML = ''; return; }
+      const byId = {}; (sc ? sc.tokens : []).forEach((t) => { byId[t.id] = t; });
+      n.hidden = false;
+      n.innerHTML = `<b class="ts-round">Раунд ${v.combat.round}</b>` + v.combat.order.map((o, i) => {
+        const t = byId[o.tokenId] || { name: '?' };
+        const cur = !v.combat.hiddenTurn && i === v.combat.turn;
+        return `<span class="ts-item${cur ? ' cur' : ''}${t.owner && t.owner === ctx.me() ? ' me' : ''}"><i style="background:${esc(t.color || '#888')}"></i>${esc(t.name)}</span>`;
+      }).join('') + (v.combat.hiddenTurn ? '<span class="ts-item cur muted">ходит кто-то невидимый</span>' : '');
+    }
+    /** Карточка героя игрока: главное о герое, эффекты, «Завершить ход» в свой ход. */
+    let cardShown = false;
+    function drawHeroCard(v) {
+      const n = $('#heroCard', el); if (!n) return;
+      const t = myToken();
+      if (!t) { n.hidden = true; n.innerHTML = ''; return; }
+      if (n.contains(document.activeElement) && /^(INPUT|SELECT)$/.test(document.activeElement.tagName)) return; // не мешаем вводу
+      const id = T.systemOf(v), me = ctx.me();
+      const sh = (v.players[me] && v.players[me].sheet) || {};
+      const cur = T.combat.current(v);
+      const myTurn = !!(cur && !v.combat.hiddenTurn && cur.tokenId === t.id);
+      const num = (label, key, val, extra) => `<label class="hc-f"><span>${label}</span><input type="number" data-self="${key}" id="hero${cap(key)}" value="${val ?? ''}">${extra || ''}</label>`;
+      const kv = (label, val) => (val == null || val === '' ? '' : `<span class="hc-f"><span>${label}</span><b>${esc(val)}</b></span>`);
+      let stats;
+      if (id === 'munchkin') stats = num('Уровень', 'level', t.level ?? sh.level) + num('Бонус', 'bonus', t.bonus) + kv('Сила в бою', (Number(t.level ?? sh.level) || 0) + (Number(t.bonus) || 0));
+      else if (id === 'gurps') stats = num('ЕЖ', 'hp', t.hp, t.hpMax != null ? `<i>/ ${t.hpMax}</i>` : '') + kv('Уклонение', t.dodge ?? sh.dodge) + kv('Движение', t.move ?? sh.speed) + kv('Баз. скорость', sh.init) + kv('СП', t.dr);
+      else stats = num('Хиты', 'hp', t.hp, t.hpMax != null ? `<i>/ ${t.hpMax}</i>` : '') + kv('КД', t.ac ?? sh.ac) + kv('Скорость', sh.speed) + kv('Пасс. внимат.', sh.passive);
+      const pct = t.hp != null && t.hpMax ? Math.max(0, Math.min(100, Math.round((t.hp / t.hpMax) * 100))) : null;
+      n.hidden = false;
+      n.classList.toggle('turn', myTurn);
+      n.innerHTML = `<div class="hc-head"><span class="dot" style="background:${esc(t.color || '#888')}"></span><b id="heroCardName">${esc(t.name)}</b>${sh.name && sh.name !== t.name ? ` <span class="muted">${esc(sh.name)}</span>` : ''}${sh.cls ? ` <span class="muted">· ${esc(sh.cls)}</span>` : ''}</div>
+        ${pct != null && T.SYSTEMS[id].hp ? `<div class="cb-hp ${hpClass(pct)}"><i style="width:${pct}%"></i></div>` : ''}
+        <div class="hc-stats">${stats}</div>
+        ${(t.effects || []).length ? `<div class="cb-fx">${t.effects.map((e) => `<span class="fx">${esc(e.name)}${e.rounds != null ? ` <b>${e.rounds}</b>` : ''}</span>`).join('')}</div>` : ''}
+        ${myTurn ? '<button class="tb pri big" id="heroEndTurn">Ваш ход — завершить ход</button>' : ''}`;
+      if (!cardShown) { cardShown = true; setTimeout(() => tips.fire('card:show'), 400); }
+    }
     function roll() {
       const expr = $('#diceExpr', el).value.trim();
       const skillEl = $('#diceSkill', el);
@@ -535,6 +592,7 @@
       if (prevCombat === false && active && gm) setTimeout(() => tips.fire('combat:start'), 50);
       if (prevPlayers === 0 && players > 0 && gm) tips.fire('player:first');
       if (prevMyTurn === false && myTurn) tips.fire('turn:mine');
+      if (gm && tab === 'combat' && active && v.combat.order.length) setTimeout(() => tips.fire('combat:effects'), 50);
       prevCombat = active; prevPlayers = players; prevMyTurn = myTurn;
       if (!opened) {
         opened = true;
@@ -563,9 +621,13 @@
         drawSystem();
         if (sel && !(scene() && scene().tokens.some((t) => t.id === sel))) sel = null;
         drawMap(); drawChat(); renderPanes();
+        drawTurnStrip(v); drawHeroCard(v);
         drawChecklist(v); watch(v); tips.place();
+        $$('details[id]', el).forEach((d) => { if (d.id in folded) d.open = !folded[d.id]; });
       },
       destroyTips() { tips.destroy(); },
+      tip(t) { tips.fire(t); },
+      folded,
       setNet(text, ok) { const n = $('#netState', el); if (n) { n.textContent = text; n.className = 'net ' + (ok ? 'ok' : 'off'); } },
     };
     $$('[data-tool]', el).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)));
@@ -573,6 +635,8 @@
   }
 
   // ---------- Общие части панелей ----------
+  const unitName = (v) => ({ 'фт': 'футов', 'ярд': 'ярдов', 'кл.': 'клеток' })[T.SYSTEMS[T.systemOf(v)].cell.unit];
+  const hpClass = (pct) => (pct <= 25 ? 'crit' : pct < 100 ? 'hurt' : 'ok');
   /** Инициатива по правилам НРИ: D&D — к20 + бонус, GURPS — Базовая скорость, Манчкин — к6 + бонус. */
   function initFor(sysId, bonus) {
     const x = T.SYSTEMS[sysId];
@@ -593,10 +657,17 @@
     return `<div class="cb-head"><b id="combatRound">Раунд ${v.combat.round}</b>${v.combat.hiddenTurn ? ' <span class="muted">· ходит кто-то невидимый</span>' : ''}</div>
       <div id="combatList">${v.combat.order.map((o, i) => {
         const t = byId[o.tokenId] || { name: '?' };
+        const x = T.SYSTEMS[T.systemOf(v)];
+        const pct = x.hp && t.hp != null && t.hpMax ? Math.max(0, Math.min(100, Math.round((t.hp / t.hpMax) * 100))) : null;
+        const stats = gm ? x.fields.filter((f) => f.key !== 'hp' && f.key !== 'hpMax').map((f) => `<span class="st">${esc(f.label)} <b>${t[f.key] ?? '—'}</b></span>`).join('') : '';
+        const fx = (t.effects || []).map((e) => `<span class="fx">${esc(e.name)}${e.rounds != null ? ` <b>${e.rounds}</b>` : ''}${gm ? `<button class="x" data-fxdel="${esc(e.id)}" data-fxtok="${esc(o.tokenId)}" aria-label="Снять эффект ${esc(e.name)}">✕</button>` : ''}</span>`).join('');
         return `<div class="cb${!v.combat.hiddenTurn && i === v.combat.turn ? ' now' : ''}" data-cb="${esc(o.tokenId)}">
-          <span class="dot" style="background:${esc(t.color || '#888')}"></span><span class="nm">${esc(t.name)}</span>
+          <div class="cb-top"><span class="dot" style="background:${esc(t.color || '#888')}"></span><span class="nm">${esc(t.name)}</span>
           ${t.hp != null && t.hpMax ? `<span class="hp">${t.hp}/${t.hpMax}</span>` : (t.health ? `<span class="hp">${esc(t.health)}</span>` : '')}
-          ${gm ? `<input class="ini" type="number" value="${o.init}" data-init="${esc(o.tokenId)}" aria-label="Инициатива ${esc(t.name)}"><button class="x" data-cbremove="${esc(o.tokenId)}" aria-label="Убрать из боя">✕</button>` : `<span class="ini-v">${o.init}</span>`}
+          ${gm ? `<input class="ini" type="number" value="${o.init}" data-init="${esc(o.tokenId)}" aria-label="Инициатива ${esc(t.name)}"><button class="x" data-cbremove="${esc(o.tokenId)}" aria-label="Убрать из боя">✕</button>` : `<span class="ini-v">${o.init}</span>`}</div>
+          ${pct != null ? `<div class="cb-hp ${hpClass(pct)}" title="${t.hp}/${t.hpMax}"><i style="width:${pct}%"></i></div>` : ''}
+          ${stats ? `<div class="cb-stats">${stats}</div>` : ''}
+          ${fx || gm ? `<div class="cb-fx">${fx}${gm ? `<span class="fx-new"><select class="fx-pick" aria-label="Эффект для ${esc(t.name)}"><option value="" label="эффект…"></option>${T.EFFECTS[T.systemOf(v)].map((n) => `<option value="${esc(n)}" label="${esc(n)}"></option>`).join('')}<option value="__own" label="свой…"></option></select><input class="fx-own" placeholder="свой эффект" aria-label="Свой эффект" hidden><input class="fx-rounds" type="number" min="1" placeholder="раунды" aria-label="Длительность в раундах (пусто — без срока)"><button class="tb fx-add" data-fxadd="${esc(o.tokenId)}" aria-label="Добавить эффект">+</button></span>` : ''}</div>` : ''}
         </div>`;
       }).join('') || '<p class="muted">В бою пока никого.</p>'}</div>
       <div class="tools">
@@ -662,6 +733,7 @@
       code = (saved && saved.code) || N.roomCode();
       const st = (saved && saved.state) || T.newState();
       st.system = T.systemOf(st);
+      st.scenes.forEach((sc) => T.normFog(sc, st.system));
       host = N.createHost(multi, st);
       if (saved && saved.assets) host.assets = saved.assets;
       host.onChange = () => { board.update(host.state); save(); };
@@ -697,7 +769,9 @@
             <label for="sceneGrid">Размер клетки, px</label><input id="sceneGrid" type="number" value="${sc.grid.size}" min="10" max="400">
             <label class="chk"><input type="checkbox" id="gridShow" ${sc.grid.show !== false ? 'checked' : ''}> Показывать сетку</label>
             <label class="chk"><input type="checkbox" id="fogEnabled" ${sc.fog.enabled ? 'checked' : ''}> Туман войны</label>
-            ${sc.fog.enabled ? '<div class="tools"><button class="tb" id="fogAll">Открыть всё</button><button class="tb" id="fogNone">Скрыть всё</button></div><p class="muted">Инструменты «Открыть» и «Скрыть» над картой — выделяйте области.</p>' : ''}
+            ${sc.fog.enabled ? `<label for="fogMode">Как рассеивается</label><select id="fogMode"><option value="manual" ${sc.fog.mode !== 'vision' ? 'selected' : ''}>Вручную — открываю сам</option><option value="vision" ${sc.fog.mode === 'vision' ? 'selected' : ''}>По обзору героев</option></select>
+              ${sc.fog.mode === 'vision' ? `<label for="fogRadius">Радиус обзора, ${esc(unitName(v))}</label><input id="fogRadius" type="number" min="0" value="${sc.fog.radius ?? ''}">` : ''}
+              <div class="tools"><button class="tb" id="fogAll">Открыть всё</button><button class="tb" id="fogNone">Скрыть всё</button></div><p class="muted">Инструменты «Открыть» и «Скрыть» над картой — выделяйте области${sc.fog.mode === 'vision' ? '; «Скрыть» стирает и исследованное' : ''}.</p>` : ''}
           </div>` : ''}`;
       }
       if (k === 'tokens') {
@@ -708,8 +782,10 @@
             <label for="tokEditName">Имя</label><input id="tokEditName" value="${esc(t.name)}">
             <label for="tokEditKind">Тип</label><select id="tokEditKind"><option value="npc" ${t.kind === 'npc' ? 'selected' : ''}>Мастерский (монстр, NPC)</option><option value="pc" ${t.kind === 'pc' ? 'selected' : ''}>Герой игрока</option></select>
             <label for="tokEditOwner">Управляет</label><select id="tokEditOwner"><option value="">никто (только мастер)</option>${players.map(([id, p]) => `<option value="${esc(id)}" ${t.owner === id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+            <details id="tokStats" ${board.folded.tokStats ? '' : 'open'}><summary>Характеристики</summary>
             <div class="two">${fields.map((f) => `<div><label for="tokEdit${cap(f.key)}">${esc(f.label)}</label><input id="tokEdit${cap(f.key)}" data-field="${f.key}" type="number" value="${t[f.key] ?? ''}"></div>`).join('')}</div>
-            <div class="two"><div><label for="tokEditSize">Размер, клеток</label><input id="tokEditSize" type="number" step="0.5" min="0.5" max="4" value="${t.size || 1}"></div><div><label for="tokEditColor">Цвет</label><input id="tokEditColor" type="color" value="${esc(t.color || '#888888')}"></div></div>
+            <div class="two"><div><label for="tokEditVision">Свой обзор, ${esc(T.SYSTEMS[T.systemOf(v)].cell.unit)}</label><input id="tokEditVision" data-field="vision" type="number" min="0" placeholder="как у сцены" value="${t.vision ?? ''}"></div><div><label for="tokEditSize">Размер, клеток</label><input id="tokEditSize" type="number" step="0.5" min="0.5" max="4" value="${t.size || 1}"></div><div><label for="tokEditColor">Цвет</label><input id="tokEditColor" type="color" value="${esc(t.color || '#888888')}"></div></div>
+            </details>
             <label class="chk"><input type="checkbox" id="tokEditHidden" ${t.hidden ? 'checked' : ''}> Скрыта от игроков</label>
             <div class="tools"><button class="tb" id="tokToCombat">В бой</button><button class="tb" id="tokDel">Удалить</button><button class="tb" id="tokUnsel">Готово</button></div></div>` : ''}
           <div class="form"><h4>Новая фишка</h4>${sc ? `
@@ -745,6 +821,18 @@
       const v = host.state, sc = T.activeScene(v);
       const q = (s) => e.target.closest(s);
       const val = (id) => { const n = $('#' + id, el); return n ? n.value : ''; };
+      const fxDel = q('[data-fxdel]');
+      if (fxDel) { host.act({ type: 'effect.remove', tokenId: fxDel.dataset.fxtok, effectId: fxDel.dataset.fxdel }); return; }
+      const fxAdd = q('[data-fxadd]');
+      if (fxAdd) {
+        const box = fxAdd.closest('.fx-new');
+        const pick = box.querySelector('.fx-pick').value;
+        const name = pick === '__own' ? box.querySelector('.fx-own').value.trim() : pick;
+        if (!name) { b.flash('diceMsg', 'Выберите эффект или впишите свой'); return; }
+        const r = host.act({ type: 'effect.add', tokenId: fxAdd.dataset.fxadd, name, rounds: box.querySelector('.fx-rounds').value });
+        if (r && !r.ok) b.flash('diceMsg', r.error);
+        return;
+      }
       if (q('#sceneAdd')) {
         const f = $('#sceneImage', el).files[0];
         let image = null, w = 1500, h = 1000;
@@ -828,6 +916,9 @@
       }
       if (t.id === 'tokEditHidden' && b.sel) { host.act({ type: 'token.update', tokenId: b.sel, patch: { hidden: t.checked } }); return; }
       if (t.id === 'fogEnabled') { host.act({ type: 'fog.set', enabled: t.checked }); return; }
+      if (t.id === 'fogMode') { host.act({ type: 'fog.set', mode: t.value }); if (t.value === 'vision') setTimeout(() => b.tip('fog:vision'), 60); return; }
+      if (t.id === 'fogRadius') { host.act({ type: 'fog.set', radius: t.value }); return; }
+      if (t.classList.contains('fx-pick')) { const own = t.parentNode.querySelector('.fx-own'); own.hidden = t.value !== '__own'; if (!own.hidden) own.focus(); return; }
       if (t.id === 'sceneGrid' && sc) { host.act({ type: 'scene.update', sceneId: sc.id, patch: { grid: { size: Number(t.value) } } }); return; }
       if (t.id === 'gridShow' && sc) { host.act({ type: 'scene.update', sceneId: sc.id, patch: { grid: { show: t.checked } } }); return; }
       if (t.dataset.init) { host.act({ type: 'combat.setInit', tokenId: t.dataset.init, init: Number(t.value) }); return; }
