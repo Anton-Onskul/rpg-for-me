@@ -153,7 +153,16 @@
   }
 
   // ---------- Интернет (PeerJS) ----------
+  // Журнал связи — общий для мастера и игрока, хранится на устройстве, чтобы ошибку можно было посмотреть и после перезагрузки.
+  const netLog = N.createLog({ storage: ls });
   function loadPeer() {
+    return loadPeerRaw().catch((e) => {
+      const code = (e && e.message) || 'load-failed';
+      netLog.add('error', 'PeerJS не загрузился: ' + code, { type: code });
+      throw e;
+    });
+  }
+  function loadPeerRaw() {
     if (root.Peer) return Promise.resolve(root.Peer);
     if (root.claude) return Promise.reject(new Error('inside-claude'));
     if (typeof RTCPeerConnection === 'undefined') return Promise.reject(new Error('no-webrtc'));
@@ -209,8 +218,8 @@
       <div class="tbl-top">
         ${gm ? `<div class="room">Код стола: <b id="roomCode" class="code">——</b> <span class="net" id="netState"></span></div>
           <label class="sys">НРИ <select id="tableSystem" aria-label="Во что играем">${Object.entries(T.SYSTEMS).map(([id, x]) => `<option value="${id}">${esc(x.name)}</option>`).join('')}</select></label>
-          <div class="tools-r"><button class="tb" id="checklistBtn" aria-expanded="false" aria-controls="checklistPanel">С чего начать · 0/7</button><button class="tb" id="tipsToggle" aria-pressed="true">💡 Подсказки</button><button class="tb" id="campSave">Сохранить в файл</button><label class="tb" for="campLoad">Загрузить</label><input type="file" id="campLoad" accept=".json,application/json" class="sr"></div>`
-        : `<div class="room">Стол мастера · <b id="tableSystemName"></b> <span class="net" id="netState"></span></div><div class="tools-r"><button class="tb" id="tipsToggle" aria-pressed="true">💡 Подсказки</button><button class="tb" id="leave">Выйти</button></div>`}
+          <div class="tools-r"><button class="tb" id="netCheckOpen">📶 Проверить связь</button><button class="tb" id="checklistBtn" aria-expanded="false" aria-controls="checklistPanel">С чего начать · 0/7</button><button class="tb" id="tipsToggle" aria-pressed="true">💡 Подсказки</button><button class="tb" id="campSave">Сохранить в файл</button><label class="tb" for="campLoad">Загрузить</label><input type="file" id="campLoad" accept=".json,application/json" class="sr"></div>`
+        : `<div class="room">Стол мастера · <b id="tableSystemName"></b> <span class="net" id="netState"></span></div><div class="tools-r"><button class="tb" id="netCheckOpen">📶 Проверить связь</button><button class="tb" id="tipsToggle" aria-pressed="true">💡 Подсказки</button><button class="tb" id="leave">Выйти</button></div>`}
       </div>
       <section class="tbl-map">
         <div class="map-tools" role="toolbar" aria-label="Инструменты карты">
@@ -435,6 +444,7 @@
     }
 
     // ---------- Панели ----------
+    el.addEventListener('click', (e) => { if (e.target.closest('#netCheckOpen')) openNetCheck(); });
     el.addEventListener('click', (e) => {
       const tb = e.target.closest('[data-tab]');
       if (tb) { goTab(tb.dataset.tab); return; }
@@ -743,7 +753,8 @@
       $('#roomCode', el).textContent = code;
       multi.add(N.channelTransport(code, 'gm'));
       board.setNet('· подключение…', false);
-      loadPeer().then((Peer) => N.peerTransport(Peer, PEER_PREFIX + code)).then((t) => {
+      netLog.add('info', 'Стол мастера: открываю по интернету, код ' + code);
+      loadPeer().then((Peer) => N.peerTransport(Peer, PEER_PREFIX + code, undefined, { log: netLog })).then((t) => {
         if (destroyed) { t.close(); return; }
         multi.add(t);
         board.setNet('· игроки могут подключаться по интернету', true);
@@ -955,20 +966,23 @@
         local.close();
         onStatus('Ищу мастера в интернете…');
         // 2) интернет
-        loadPeer().then((Peer) => N.peerTransport(Peer, PEER_PREFIX + 'p-' + key + '-' + Math.random().toString(36).slice(2, 6), PEER_PREFIX + room))
+        netLog.add('info', 'Вход к столу ' + room + ' (' + name + ')');
+        const failWith = (code, t) => {
+          if (done) return;
+          done = true;
+          if (t) t.close();
+          netLog.add('error', 'Вход к столу ' + room + ' не удался: ' + code, { type: code });
+          reject(new Error(N.explainError(code, room)));
+        };
+        loadPeer().then((Peer) => N.peerTransport(Peer, PEER_PREFIX + 'p-' + key + '-' + Math.random().toString(36).slice(2, 6), PEER_PREFIX + room, { log: netLog }))
           .then((t) => {
             const c = N.createClient(t, PEER_PREFIX + room, { name, key });
-            c.onChange = () => { if (!done) { done = true; resolve(c); } };
-            c.onError = (e) => { if (!done) { done = true; t.close(); reject(new Error(e)); } };
-            setTimeout(() => { if (!done) { done = true; t.close(); reject(new Error('Мастер не найден. Проверьте код и что у мастера открыт стол.')); } }, 12000);
+            c.onChange = () => { if (!done) { done = true; netLog.add('info', 'Вошёл к столу ' + room); resolve(c); } };
+            c.onError = (e) => { if (!done) { done = true; t.close(); netLog.add('error', 'Мастер отказал: ' + e); reject(new Error(e)); } };
+            t.onError((code) => failWith(code, t));
+            setTimeout(() => failWith('timeout', t), 12000);
           })
-          .catch((err) => {
-            if (done) return;
-            done = true;
-            reject(new Error(err && err.message === 'inside-claude'
-              ? 'Мастер не найден на этом устройстве. По интернету подключение работает в версии приложения на сайте.'
-              : 'Мастер не найден. Проверьте код и подключение к интернету.'));
-          });
+          .catch((err) => failWith((err && (err.type || err.message)) || 'unknown'));
       }, 1500);
     });
   }
@@ -1027,5 +1041,83 @@
     return { destroy() { board.destroyTips(); client.close(); } };
   }
 
-  root.RPG_TABLE_UI = { mountGM, mountPlayer, connectPlayer, myKey, ls };
+  // ======================================================================
+  // Проверка связи и журнал ошибок
+  // ======================================================================
+  let checking = false;
+  function openNetCheck() {
+    let d = document.getElementById('netDlg');
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = 'netDlg';
+      d.setAttribute('aria-label', 'Проверка связи');
+      d.innerHTML = `<h3>Проверка связи</h3>
+        <ul id="netCheckList" class="netcheck"></ul>
+        <p id="netVerdict" aria-live="polite"></p>
+        <div class="tools-r"><button class="tb" id="netCheckRun">Проверить ещё раз</button><button class="tb" id="netCopy">Скопировать отчёт</button><button class="tb" id="netDlgClose">Закрыть</button></div>
+        <label for="netReport" class="muted">Отчёт — перешлите мастеру, если не подключается</label>
+        <textarea id="netReport" readonly></textarea>
+        <details id="netLogBox" open><summary>Журнал ошибок связи</summary>
+          <div id="netLogList" class="netlog"></div>
+          <button class="tb" id="netLogClear">Очистить журнал</button></details>`;
+      document.body.appendChild(d);
+      d.addEventListener('click', (e) => {
+        if (e.target.closest('#netDlgClose')) d.close();
+        else if (e.target.closest('#netCheckRun')) runCheck();
+        else if (e.target.closest('#netLogClear')) netLog.clear();
+        else if (e.target.closest('#netCopy')) {
+          const ta = $('#netReport', d);
+          ta.select();
+          const ok = () => { $('#netCopy', d).textContent = 'Скопировано'; setTimeout(() => { const b = $('#netCopy', d); if (b) b.textContent = 'Скопировать отчёт'; }, 2000); };
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(ok, () => { try { document.execCommand('copy'); ok(); } catch (x) { /* выделено — скопируют вручную */ } });
+          else { try { document.execCommand('copy'); ok(); } catch (x) { /* выделено */ } }
+        }
+      });
+      netLog.onChange(renderLog);
+    }
+    renderLog();
+    if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+    runCheck();
+  }
+  function renderLog() {
+    const box = document.getElementById('netLogList');
+    if (!box) return;
+    const items = netLog.list().slice().reverse();
+    box.innerHTML = items.length
+      ? items.map((x) => `<div class="lg ${esc(x.level)}">${esc(netLog.line(x))}</div>`).join('')
+      : '<p class="muted">Записей нет.</p>';
+  }
+  function runCheck() {
+    if (checking) return;
+    const d = document.getElementById('netDlg');
+    if (!d) return;
+    checking = true;
+    const btn = $('#netCheckRun', d);
+    btn.disabled = true;
+    $('#netVerdict', d).textContent = '';
+    $('#netReport', d).value = '';
+    const draw = (steps, final) => {
+      $('#netCheckList', d).innerHTML = steps.map((s) => `<li data-step="${s.id}" data-ok="${s.ok === null ? '' : s.ok}">${s.ok === true ? '✓' : s.ok === false ? '✗' : final ? '–' : '…'} ${esc(s.title)}${s.detail ? ` <span class="muted">— ${esc(s.detail)}</span>` : s.ok === null && final ? ' <span class="muted">— не проверялось</span>' : ''}</li>`).join('');
+    };
+    const live = [['webrtc', 'WebRTC в браузере'], ['peerLib', 'Библиотека PeerJS загрузилась'], ['server', 'Сервер подключений PeerJS отвечает'], ['stun', 'Внешний адрес получен (STUN)'], ['turn', 'Ретранслятор доступен (TURN)']]
+      .map(([id, title]) => ({ id, title, ok: null, detail: '' }));
+    draw(live);
+    if (root.claude) netLog.add('warn', 'Проверка внутри Claude: по интернету работает только на сайте');
+    N.runDiagnostics({
+      RTC: typeof RTCPeerConnection === 'function' ? RTCPeerConnection : undefined,
+      loadPeer,
+      timeout: 5000,
+      log: netLog,
+      onStep: (s) => { const i = live.findIndex((x) => x.id === s.id); if (i >= 0) live[i] = Object.assign({}, s); draw(live); },
+    }).then((r) => {
+      draw(r.steps, true);
+      $('#netVerdict', d).textContent = (root.claude ? 'Проверка доступна только на сайте. ' : '') + r.verdict.text;
+      $('#netVerdict', d).className = r.verdict.ok ? 'ok' : 'off';
+      $('#netReport', d).value = N.report(r, { ua: navigator.userAgent, log: netLog });
+    }).catch((e) => {
+      $('#netVerdict', d).textContent = 'Проверка не удалась: ' + ((e && e.message) || e);
+    }).finally(() => { checking = false; btn.disabled = false; });
+  }
+
+  root.RPG_TABLE_UI = { mountGM, mountPlayer, connectPlayer, myKey, ls, openNetCheck, netLog };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

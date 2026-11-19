@@ -45,22 +45,42 @@
   }
 
   /** Интернет: PeerJS (WebRTC). PeerClass — конструктор Peer. hostId — к кому подключиться (для игрока). */
+  // STUN — узнать свой внешний адрес; TURN — ретранслятор, когда напрямую соединиться нельзя (мобильные сети, NAT оператора).
+  // Сейчас — серверы PeerJS по умолчанию, заданные явно, чтобы диагностика проверяла те же, что и подключение.
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+  ];
+  const errType = (e) => (e && (e.type || e.message)) || 'unknown';
+
   function peerTransport(PeerClass, myId, hostId, options) {
+    const o = options || {};
+    const log = o.log || null;
+    const note = (level, text, data) => { if (log) log.add(level, text, data); };
     return new Promise((resolve, reject) => {
-      const peer = new PeerClass(myId, options);
+      const peer = new PeerClass(myId, Object.assign({ config: { iceServers: ICE_SERVERS } }, o.peer || {}));
       const conns = {};
       const queues = {};
       let handler = null;
       let closeHandler = null;
+      let errorHandler = null;
+      let opened = false;
+      const fail = (code) => { if (errorHandler) errorHandler(code); };
       const wire = (conn) => {
         conns[conn.peer] = conn;
         conn.on('open', () => {
           conn.isOpen = true;
+          note('info', 'Соединение открыто: ' + conn.peer);
           (queues[conn.peer] || []).forEach((m) => conn.send(m));
           queues[conn.peer] = [];
         });
         conn.on('data', (m) => { if (handler) handler(conn.peer, m); });
-        conn.on('close', () => { delete conns[conn.peer]; if (closeHandler) closeHandler(conn.peer); });
+        conn.on('close', () => { note('warn', 'Соединение закрыто: ' + conn.peer); delete conns[conn.peer]; if (closeHandler) closeHandler(conn.peer); });
+        conn.on('iceStateChanged', (st) => {
+          note(st === 'failed' ? 'error' : 'info', 'ICE ' + conn.peer + ': ' + st);
+          if (st === 'failed') fail('ice-failed');
+        });
+        conn.on('error', (e) => { note('error', 'Ошибка соединения ' + conn.peer + ': ' + errType(e), { type: errType(e), message: e && e.message }); fail(errType(e)); });
       };
       const t = {
         id: myId,
@@ -72,15 +92,169 @@
         },
         onMessage(fn) { handler = fn; },
         onClose(fn) { closeHandler = fn; },
+        onError(fn) { errorHandler = fn; },
         close() { try { peer.destroy(); } catch (e) { /* уже закрыт */ } },
       };
-      peer.on('connection', wire);
-      peer.on('error', (e) => reject(e));
+      peer.on('connection', (c) => { note('info', 'Входящее подключение: ' + c.peer); wire(c); });
+      peer.on('error', (e) => {
+        const code = errType(e);
+        note('error', 'Ошибка PeerJS: ' + code, { type: code, message: e && e.message });
+        if (!opened) { const err = new Error(code); err.type = code; reject(err); } else fail(code);
+      });
+      peer.on('disconnected', () => note('warn', 'Отключение от сервера подключений'));
       peer.on('open', () => {
-        if (hostId) wire(peer.connect(hostId, { reliable: true }));
+        opened = true;
+        note('info', 'Сервер подключений: на связи как ' + myId);
+        if (hostId) { note('info', 'Подключаюсь к ' + hostId); wire(peer.connect(hostId, { reliable: true })); }
         resolve(t);
       });
     });
+  }
+
+  // ---------- Понятные причины ошибок ----------
+  const SERVER_ERR = ['network', 'server-error', 'socket-error', 'socket-closed', 'load-failed', 'no-peer', 'unavailable-id-timeout', 'disconnected'];
+  function explainError(code, room) {
+    if (code === 'peer-unavailable') return `Стол с кодом ${room || ''} не найден. Проверьте код и что у мастера открыт стол.`.replace('  ', ' ');
+    if (code === 'ice-failed' || code === 'negotiation-failed') return 'Мастер найден, но ваша сеть не пропускает соединение. Нажмите «Проверить связь».';
+    if (SERVER_ERR.includes(code)) return 'Не удалось связаться с сервером подключений. Проверьте интернет и нажмите «Проверить связь».';
+    if (code === 'no-webrtc' || code === 'browser-incompatible') return 'Этот браузер не поддерживает подключение по интернету. Попробуйте Chrome.';
+    if (code === 'inside-claude') return 'Подключение по интернету работает только в версии приложения на сайте.';
+    return 'Мастер не найден. Проверьте код и что у мастера открыт стол.';
+  }
+
+  // ---------- Журнал связи ----------
+  const LOG_KEY = 'netlog';
+  function createLog(opts) {
+    const o = opts || {};
+    const max = o.max || 200;
+    const now = o.now || Date.now;
+    const storage = o.storage || null;
+    let items = [];
+    const subs = [];
+    if (storage) {
+      try { const x = JSON.parse(storage.get(LOG_KEY) || '[]'); if (Array.isArray(x)) items = x.slice(-max); } catch (e) { items = []; }
+    }
+    const persist = () => { if (storage) { try { storage.set(LOG_KEY, JSON.stringify(items)); } catch (e) { /* нет места */ } } };
+    const changed = () => { persist(); subs.forEach((f) => f()); };
+    const LV = { info: 'инфо', warn: 'ВНИМАНИЕ', error: 'ОШИБКА' };
+    const line = (x) => new Date(x.time).toISOString().replace('T', ' ').slice(0, 19) + ' ' + (LV[x.level] || x.level) + ' ' + x.text
+      + (x.data !== undefined ? ' ' + JSON.stringify(x.data) : '');
+    return {
+      add(level, text, data) {
+        const e = { time: now(), level, text: String(text) };
+        if (data !== undefined) e.data = data;
+        items.push(e);
+        if (items.length > max) items = items.slice(-max);
+        changed();
+        return e;
+      },
+      list() { return items.slice(); },
+      errors() { return items.filter((x) => x.level === 'error'); },
+      text() { return items.map(line).join('\n'); },
+      line,
+      clear() { items = []; changed(); },
+      onChange(fn) { subs.push(fn); },
+    };
+  }
+
+  // ---------- Проверка сети ----------
+  /** Собирает ICE-кандидатов: host — локальный адрес, srflx — внешний (STUN), relay — через ретранслятор (TURN). */
+  function gatherCandidates(RTC, iceServers, timeoutMs) {
+    return new Promise((resolve) => {
+      const r = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+      let pc;
+      let done = false;
+      const finish = (extra) => {
+        if (done) return; done = true; clearTimeout(timer);
+        try { if (pc) pc.close(); } catch (e) { /* уже закрыт */ }
+        resolve(Object.assign(r, extra || {}));
+      };
+      const timer = setTimeout(() => finish({ timedOut: true }), timeoutMs);
+      try {
+        pc = new RTC({ iceServers });
+        pc.onicecandidate = (e) => {
+          if (!e.candidate) { finish(); return; }
+          const m = / typ (\w+)/.exec(e.candidate.candidate || '');
+          if (m && r[m[1]] !== undefined) r[m[1]]++;
+        };
+        pc.createDataChannel('probe');
+        pc.createOffer().then((d) => pc.setLocalDescription(d)).catch((e) => finish({ error: (e && e.message) || 'offer' }));
+      } catch (e) { finish({ error: (e && e.message) || 'rtc' }); }
+    });
+  }
+
+  function verdict(r) {
+    if (!r.webrtc) return { ok: false, text: 'Браузер не поддерживает подключение по интернету (WebRTC). Попробуйте Chrome.' };
+    if (!r.peerLib || !r.server) return { ok: false, text: 'Недоступен сервер подключений: его блокирует сеть, провайдер или блокировщик рекламы в браузере.' };
+    if (!r.relay) return { ok: false, text: 'Ретранслятор (TURN) недоступен: прямое соединение может не пройти через мобильную сеть или NAT оператора. Нужен свой ретранслятор.' };
+    return { ok: true, text: 'Связь в порядке: браузер, сервер подключений и ретранслятор работают.' };
+  }
+
+  const STEPS = [
+    ['webrtc', 'WebRTC в браузере'],
+    ['peerLib', 'Библиотека PeerJS загрузилась'],
+    ['server', 'Сервер подключений PeerJS отвечает'],
+    ['stun', 'Внешний адрес получен (STUN)'],
+    ['turn', 'Ретранслятор доступен (TURN)'],
+  ];
+
+  /** env: { RTC, loadPeer() → Promise<Peer>, iceServers, timeout, log, onStep(step) } */
+  async function runDiagnostics(env) {
+    const e = env || {};
+    const timeout = e.timeout || 5000;
+    const ice = e.iceServers || ICE_SERVERS;
+    const steps = STEPS.map(([id, title]) => ({ id, title, ok: null, detail: '' }));
+    const S = Object.fromEntries(steps.map((s) => [s.id, s]));
+    const set = (id, ok, detail) => { S[id].ok = ok; S[id].detail = detail || ''; if (e.onStep) e.onStep(S[id]); };
+    const res = { webrtc: false, peerLib: false, server: false, srflx: false, relay: false };
+    if (e.log) e.log.add('info', 'Проверка связи: начало');
+
+    res.webrtc = typeof e.RTC === 'function';
+    set('webrtc', res.webrtc, res.webrtc ? '' : 'нет RTCPeerConnection');
+    if (res.webrtc) {
+      const net = gatherCandidates(e.RTC, ice, timeout);
+      let Peer = null;
+      try { Peer = await e.loadPeer(); res.peerLib = true; set('peerLib', true); } catch (err) { set('peerLib', false, errType(err)); }
+      if (Peer) {
+        const r = await new Promise((resolve) => {
+          let p;
+          const end = (ok, d) => { clearTimeout(tm); try { p.destroy(); } catch (x) { /* уже закрыт */ } resolve({ ok, d }); };
+          const tm = setTimeout(() => end(false, 'timeout'), timeout);
+          try {
+            p = new Peer('rpg-for-me-check-' + Math.random().toString(36).slice(2, 10), { config: { iceServers: ice } });
+            p.on('open', () => end(true));
+            p.on('error', (x) => end(false, errType(x)));
+          } catch (x) { end(false, errType(x)); }
+        });
+        res.server = r.ok;
+        set('server', r.ok, r.d);
+      }
+      const c = await net;
+      res.srflx = c.srflx + c.prflx > 0;
+      res.relay = c.relay > 0;
+      const d = `host ${c.host}, srflx ${c.srflx}, relay ${c.relay}${c.timedOut ? ', не дождался конца' : ''}${c.error ? ', ' + c.error : ''}`;
+      set('stun', res.srflx, d);
+      set('turn', res.relay, d);
+    }
+    const v = verdict(res);
+    if (e.log) e.log.add(v.ok ? 'info' : 'error', 'Проверка связи: ' + v.text, { steps: steps.map((s) => s.id + ':' + s.ok + (s.detail ? ' (' + s.detail + ')' : '')) });
+    return { steps, verdict: v, result: res };
+  }
+
+  function report(r, opts) {
+    const o = opts || {};
+    const mark = (ok) => (ok === true ? '✓' : ok === false ? '✗' : '–');
+    const lines = [
+      'Проверка связи «Лист героя»',
+      'Время: ' + new Date(o.now || Date.now()).toISOString().replace('T', ' ').slice(0, 19) + ' UTC',
+      'Браузер: ' + (o.ua || ''),
+      '',
+      ...r.steps.map((s) => `${mark(s.ok)} ${s.title}${s.detail ? ' — ' + s.detail : ''}`),
+      '',
+      'Итог: ' + r.verdict.text,
+    ];
+    if (o.log && o.log.list().length) lines.push('', 'Журнал:', o.log.text());
+    return lines.join('\n');
   }
 
   /** Несколько каналов сразу (окна этого браузера + интернет): ответ уходит туда, откуда пришёл игрок. */
@@ -196,6 +370,7 @@
   }
   const normalizeCode = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  const API = { memoryHub, channelTransport, peerTransport, multiTransport, createHost, createClient, roomCode, normalizeCode };
+  const API = { memoryHub, channelTransport, peerTransport, multiTransport, createHost, createClient, roomCode, normalizeCode,
+    ICE_SERVERS, explainError, createLog, gatherCandidates, verdict, runDiagnostics, report };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.RPG_NET = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

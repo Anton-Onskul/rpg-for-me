@@ -410,6 +410,14 @@ table.sec input { width: 4.2em; font-family: var(--f-num); background: var(--sun
 .saved { font-size: .82rem; color: var(--muted); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 dialog { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); max-width: min(92vw, 640px); }
+.netcheck { list-style: none; padding: 0; margin: 0 0 8px; }
+.netcheck li { padding: 3px 0; }
+.netcheck li[data-ok="true"] { color: var(--ok); }
+.netcheck li[data-ok="false"] { color: var(--bad, #b3261e); }
+#netVerdict.ok { color: var(--ok); } #netVerdict.off { color: var(--bad, #b3261e); font-weight: 600; }
+.netlog { max-height: 200px; overflow: auto; font-family: var(--f-num); font-size: .75rem; margin: 6px 0; }
+.netlog .lg { padding: 2px 0; border-bottom: 1px solid var(--line); word-break: break-word; }
+.netlog .lg.error { color: var(--bad, #b3261e); } .netlog .lg.warn { color: #9a6700; }
 dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-family: var(--f-num); font-size: .8rem; }
 .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 </style>
@@ -921,8 +929,10 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
         <div class="f"><label for="joinName">Ваше имя за столом</label><input id="joinName" value="${esc(U.ls.get('name') || '')}" placeholder="Например, Аня" required></div>
         <div class="f"><label for="joinCode">Код стола</label><input id="joinCode" value="${esc(U.ls.get('code') || '')}" placeholder="ABCD23" required autocapitalize="characters"></div>
         <button class="btn primary" id="joinGo" type="submit">Подключиться</button>
+        <button class="btn" id="netCheckOpen" type="button">📶 Проверить связь</button>
         <div class="saved" id="joinMsg" aria-live="polite">${esc(msg || '')}</div>
       </form>`;
+    $('#netCheckOpen').addEventListener('click', () => U.openNetCheck());
     $('#joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = $('#joinName').value.trim(), code = $('#joinCode').value.trim();
