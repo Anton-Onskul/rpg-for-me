@@ -166,9 +166,10 @@ test('verdict: итог по результатам проверки', () => {
   assert.match(N.verdict({ webrtc: true, peerLib: false }).text, /сервер подключений/);
   assert.match(N.verdict({ webrtc: true, peerLib: true, server: false }).text, /сервер подключений/);
   const noTurn = N.verdict({ webrtc: true, peerLib: true, server: true, srflx: true, relay: false });
-  assert.equal(noTurn.ok, false);
-  assert.match(noTurn.text, /ретранслятор/);
-  assert.match(N.verdict({ webrtc: true, peerLib: true, server: true, srflx: false, relay: false }).text, /ретранслятор/);
+  assert.equal(noTurn.ok, true);
+  assert.equal(noTurn.warning, true);
+  assert.match(noTurn.text, /TURN/);
+  assert.match(N.verdict({ webrtc: true, peerLib: true, server: true, srflx: false, relay: false }).text, /TURN/);
   const ok = N.verdict({ webrtc: true, peerLib: true, server: true, srflx: true, relay: true });
   assert.equal(ok.ok, true);
   assert.match(ok.text, /в порядке/);
@@ -296,12 +297,23 @@ test('openWithRetry: сдаётся после заданного числа п�
   assert.equal(m, 1, 'сетевую ошибку не повторяем');
 });
 
+test('peerTransport: повторный open не создаёт второе соединение к мастеру', async () => {
+  const P = fakePeerClass();
+  const t = await N.peerTransport(P, 'pl', 'gm');
+  const p = P.made[0];
+  const original = p.lastConn;
+  p.emit('open', 'pl');
+  assert.equal(p.lastConn, original);
+  t.close();
+});
+
 test('peerTransport: при потере сервера подключений переподключается, после close — нет', async () => {
   const P = fakePeerClass();
   const t = await N.peerTransport(P, 'gm', null, { reconnectDelay: 10 });
   const p = P.made[0];
   let rc = 0;
   p.reconnect = () => { rc++; };
+  p.disconnected = true;
   p.emit('disconnected');
   await wait(40);
   assert.equal(rc, 1);
@@ -309,4 +321,20 @@ test('peerTransport: при потере сервера подключений �
   p.emit('disconnected');
   await wait(40);
   assert.equal(rc, 1, 'после закрытия не переподключаемся');
+});
+
+
+test('peerTransport: не переподключается, если сервер восстановился до таймера', async () => {
+  const P = fakePeerClass();
+  const t = await N.peerTransport(P, 'gm', null, { reconnectDelay: 25 });
+  const p = P.made[0];
+  let calls = 0;
+  p.reconnect = () => { calls++; };
+  p.disconnected = true;
+  p.emit('disconnected');
+  p.disconnected = false;
+  p.emit('open', 'gm');
+  await wait(50);
+  assert.equal(calls, 0);
+  t.close();
 });
