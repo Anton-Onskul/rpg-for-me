@@ -975,6 +975,7 @@
     const room = N.normalizeCode(code);
     return new Promise((resolve, reject) => {
       let done = false;
+      let joinTimer = null;
       // 1) тот же браузер (соседняя вкладка мастера)
       const local = N.createClient(N.channelTransport(room, 'c-' + key + '-' + Math.random().toString(36).slice(2, 6)), 'gm', { name, key });
       local.onChange = () => { if (!done) { done = true; resolve(local); } };
@@ -988,6 +989,7 @@
         const failWith = (code, t) => {
           if (done) return;
           done = true;
+          clearTimeout(joinTimer);
           if (t) t.close();
           netLog.add('error', 'Вход к столу ' + room + ' не удался: ' + code, { type: code });
           reject(new Error(N.explainError(code, room)));
@@ -995,10 +997,10 @@
         Promise.all([loadPeer(), getIce()]).then(([Peer, iceServers]) => N.peerTransport(Peer, PEER_PREFIX + 'p-' + key + '-' + Math.random().toString(36).slice(2, 6), PEER_PREFIX + room, { log: netLog, iceServers }))
           .then((t) => {
             const c = N.createClient(t, PEER_PREFIX + room, { name, key });
-            c.onChange = () => { if (!done) { done = true; netLog.add('info', 'Вошёл к столу ' + room); resolve(c); } };
-            c.onError = (e) => { if (!done) { done = true; t.close(); netLog.add('error', 'Мастер отказал: ' + e); reject(new Error(e)); } };
+            c.onChange = () => { if (!done) { done = true; clearTimeout(joinTimer); netLog.add('info', 'Вошёл к столу ' + room); resolve(c); } };
+            c.onError = (e) => { if (!done) { done = true; clearTimeout(joinTimer); t.close(); netLog.add('error', 'Мастер отказал: ' + e); reject(new Error(e)); } };
             t.onError((code) => failWith(code, t));
-            setTimeout(() => failWith('timeout', t), 12000);
+            joinTimer = setTimeout(() => failWith('timeout', t), 30000);
           })
           .catch((err) => failWith((err && (err.type || err.message)) || 'unknown'));
       }, 1500);
