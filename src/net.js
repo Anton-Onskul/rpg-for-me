@@ -66,6 +66,7 @@
       let closeHandler = null;
       let errorHandler = null;
       let opened = false;
+      let reconnectTimer = null;
       const fail = (code) => { if (errorHandler) errorHandler(code); };
       const wire = (conn) => {
         conns[conn.peer] = conn;
@@ -94,7 +95,7 @@
         onMessage(fn) { handler = fn; },
         onClose(fn) { closeHandler = fn; },
         onError(fn) { errorHandler = fn; },
-        close() { closed = true; try { peer.destroy(); } catch (e) { /* уже закрыт */ } },
+        close() { closed = true; clearTimeout(reconnectTimer); try { peer.destroy(); } catch (e) { /* уже закрыт */ } },
       };
       peer.on('connection', (c) => { note('info', 'Входящее подключение: ' + c.peer); wire(c); });
       peer.on('error', (e) => {
@@ -106,16 +107,22 @@
       peer.on('disconnected', () => {
         note('warn', 'Отключение от сервера подключений');
         if (!opened || closed) return;
-        setTimeout(() => {
-          if (closed || peer.destroyed) return;
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          if (closed || peer.destroyed || !peer.disconnected) return;
           note('info', 'Переподключаюсь к серверу подключений');
           try { peer.reconnect(); } catch (e) { note('error', 'Не удалось переподключиться: ' + errType(e)); }
         }, o.reconnectDelay != null ? o.reconnectDelay : 2000);
       });
       peer.on('open', () => {
+        if (closed) return;
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+        const firstOpen = !opened;
         opened = true;
         note('info', 'Сервер подключений: на связи как ' + myId);
-        if (hostId) { note('info', 'Подключаюсь к ' + hostId); wire(peer.connect(hostId, { reliable: true })); }
+        if (firstOpen && hostId) { note('info', 'Подключаюсь к ' + hostId); wire(peer.connect(hostId, { reliable: true })); }
         resolve(t);
       });
     });
@@ -229,7 +236,7 @@
   function verdict(r) {
     if (!r.webrtc) return { ok: false, text: 'Браузер не поддерживает подключение по интернету (WebRTC). Попробуйте Chrome.' };
     if (!r.peerLib || !r.server) return { ok: false, text: 'Недоступен сервер подключений: его блокирует сеть, провайдер или блокировщик рекламы в браузере.' };
-    if (!r.relay) return { ok: false, text: 'Ретранслятор (TURN) недоступен: прямое соединение может не пройти через мобильную сеть или NAT оператора. Нужен свой ретранслятор.' };
+    if (!r.relay) return { ok: true, warning: true, text: 'TURN не подтверждён: прямое соединение может работать, но через некоторые мобильные сети и NAT потребуется ретранслятор. Проверка не устанавливает соединение между игроком и мастером.' };
     return { ok: true, text: 'Связь в порядке: браузер, сервер подключений и ретранслятор работают.' };
   }
 
@@ -280,7 +287,7 @@
       set('turn', res.relay, d);
     }
     const v = verdict(res);
-    if (e.log) e.log.add(v.ok ? 'info' : 'error', 'Проверка связи: ' + v.text, { steps: steps.map((s) => s.id + ':' + s.ok + (s.detail ? ' (' + s.detail + ')' : '')) });
+    if (e.log) e.log.add(!v.ok ? 'error' : v.warning ? 'warn' : 'info', 'Проверка связи: ' + v.text, { steps: steps.map((s) => s.id + ':' + s.ok + (s.detail ? ' (' + s.detail + ')' : '')) });
     return { steps, verdict: v, result: res };
   }
 
