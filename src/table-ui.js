@@ -10,6 +10,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const PEER_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
   const PEER_PREFIX = 'rpg-for-me-';
+  // Свой ретранслятор: адрес Cloudflare Worker (worker/turn.mjs). Пусто — серверы PeerJS по умолчанию.
+  const TURN_URL = '';
   const LS = 'rpg-table.';
 
   const ls = {
@@ -161,6 +163,19 @@
       netLog.add('error', 'PeerJS не загрузился: ' + code, { type: code });
       throw e;
     });
+  }
+  let icePromise = null;
+  /** Серверы ICE: свои от Worker (пароли на 12 часов) или запасные. Запрос — один раз за 6 часов. */
+  function getIce() {
+    if (!icePromise || Date.now() - icePromise.at > 6 * 3600e3) {
+      icePromise = N.fetchIceServers((u) => fetch(u), TURN_URL, 5000).then((r) => {
+        if (r.error) netLog.add('error', 'Ретранслятор: не получил пароли (' + r.error + '), работаю без своего ретранслятора', { type: r.error });
+        else if (r.source === 'worker') netLog.add('info', 'Ретранслятор: пароли получены');
+        return r.iceServers;
+      });
+      icePromise.at = Date.now();
+    }
+    return icePromise;
   }
   function loadPeerRaw() {
     if (root.Peer) return Promise.resolve(root.Peer);
@@ -754,7 +769,10 @@
       multi.add(N.channelTransport(code, 'gm'));
       board.setNet('· подключение…', false);
       netLog.add('info', 'Стол мастера: открываю по интернету, код ' + code);
-      loadPeer().then((Peer) => N.peerTransport(Peer, PEER_PREFIX + code, undefined, { log: netLog })).then((t) => {
+      Promise.all([loadPeer(), getIce()]).then(([Peer, iceServers]) => N.openWithRetry(
+        () => { if (destroyed) throw Object.assign(new Error('closed'), { type: 'closed' }); return N.peerTransport(Peer, PEER_PREFIX + code, undefined, { log: netLog, iceServers }); },
+        { onRetry: (i) => { netLog.add('warn', 'Код стола ещё занят прошлым подключением, попытка ' + (i + 1)); board.setNet('· код стола занят прошлым подключением — жду, попытка ' + (i + 1) + '…', false); } },
+      )).then((t) => {
         if (destroyed) { t.close(); return; }
         multi.add(t);
         board.setNet('· игроки могут подключаться по интернету', true);
@@ -974,7 +992,7 @@
           netLog.add('error', 'Вход к столу ' + room + ' не удался: ' + code, { type: code });
           reject(new Error(N.explainError(code, room)));
         };
-        loadPeer().then((Peer) => N.peerTransport(Peer, PEER_PREFIX + 'p-' + key + '-' + Math.random().toString(36).slice(2, 6), PEER_PREFIX + room, { log: netLog }))
+        Promise.all([loadPeer(), getIce()]).then(([Peer, iceServers]) => N.peerTransport(Peer, PEER_PREFIX + 'p-' + key + '-' + Math.random().toString(36).slice(2, 6), PEER_PREFIX + room, { log: netLog, iceServers }))
           .then((t) => {
             const c = N.createClient(t, PEER_PREFIX + room, { name, key });
             c.onChange = () => { if (!done) { done = true; netLog.add('info', 'Вошёл к столу ' + room); resolve(c); } };
@@ -1103,13 +1121,14 @@
       .map(([id, title]) => ({ id, title, ok: null, detail: '' }));
     draw(live);
     if (root.claude) netLog.add('warn', 'Проверка внутри Claude: по интернету работает только на сайте');
-    N.runDiagnostics({
+    getIce().then((iceServers) => N.runDiagnostics({
       RTC: typeof RTCPeerConnection === 'function' ? RTCPeerConnection : undefined,
       loadPeer,
+      iceServers,
       timeout: 5000,
       log: netLog,
       onStep: (s) => { const i = live.findIndex((x) => x.id === s.id); if (i >= 0) live[i] = Object.assign({}, s); draw(live); },
-    }).then((r) => {
+    })).then((r) => {
       draw(r.steps, true);
       $('#netVerdict', d).textContent = (root.claude ? 'Проверка доступна только на сайте. ' : '') + r.verdict.text;
       $('#netVerdict', d).className = r.verdict.ok ? 'ok' : 'off';

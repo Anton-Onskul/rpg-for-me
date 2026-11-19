@@ -5,8 +5,8 @@
   "description": "Лист героя: листы персонажей для D&D 5e, GURPS 4e и Манчкина со справкой по полям",
   "scripts": {
     "build": "node build.js",
-    "test:unit": "node --test tests/core.test.js tests/help.test.js tests/gurps.test.js tests/phb.test.js tests/origins.test.js tests/table.test.js tests/system.test.js tests/tips.test.js tests/table-v2.test.js tests/net.test.js tests/netdiag.test.js",
-    "test:e2e": "node build.js && node --test --test-timeout=60000 tests/e2e.test.js tests/table.e2e.test.js tests/tips.e2e.test.js tests/table-v2.e2e.test.js tests/netdiag.e2e.test.js",
+    "test:unit": "node --test tests/core.test.js tests/help.test.js tests/gurps.test.js tests/phb.test.js tests/origins.test.js tests/table.test.js tests/system.test.js tests/tips.test.js tests/table-v2.test.js tests/net.test.js tests/netdiag.test.js tests/worker.test.js",
+    "test:e2e": "node build.js && node --test --test-timeout=60000 tests/e2e.test.js tests/table.e2e.test.js tests/tips.e2e.test.js tests/table-v2.e2e.test.js tests/netdiag.e2e.test.js tests/exitguard.e2e.test.js",
     "test": "npm run test:unit && npm run test:e2e"
   },
   "devDependencies": {

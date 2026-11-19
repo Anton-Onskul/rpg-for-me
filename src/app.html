@@ -872,10 +872,17 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
   // ---------- Маршруты ----------
   let tableCtl = null;    // открытый стол мастера или игрока
   let tableClient = null; // подключение игрока к мастеру
+  // Защита от случайного выхода из-за стола (жест «Назад» на телефоне, закрытие вкладки).
+  let tableHash = '';
+  window.addEventListener('beforeunload', (e) => { if (tableCtl) { e.preventDefault(); e.returnValue = ''; } });
   function route() {
     const h = location.hash.replace(/^#/, '');
     const tableRoute = h === 'gm' || h === 'table';
-    if (tableCtl && !tableRoute) { tableCtl.destroy(); tableCtl = null; tableClient = null; }
+    if (tableCtl && !tableRoute) {
+      if (!confirm('Выйти из-за стола? Связь с игроками прервётся.')) { history.pushState(null, '', '#' + tableHash); return; }
+      tableCtl.destroy(); tableCtl = null; tableClient = null;
+    }
+    if (tableRoute) tableHash = h;
     document.body.classList.toggle('mode-table', tableRoute);
     if (h === '') return renderRoles();
     if (h === 'gm') return renderGM();

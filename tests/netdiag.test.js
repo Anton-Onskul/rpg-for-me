@@ -233,3 +233,80 @@ test('report: текст отчёта для пересылки', async () => {
   assert.ok(txt.includes("Итог: " + r.verdict.text), "итог в отчёте");
   assert.match(txt, /peer-unavailable/, 'журнал попадает в отчёт');
 });
+
+// ---------- Ретранслятор через свой Worker ----------
+const okFetch = (body, status = 200) => { const f = async (url) => { f.url = url; return { ok: status < 300, status, json: async () => body }; }; return f; };
+
+test('fetchIceServers: берёт серверы у Worker и убирает порт 53', async () => {
+  const f = okFetch({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }, { urls: ['turn:turn.cloudflare.com:3478', 'turn:turn.cloudflare.com:53'], username: 'u', credential: 'c' }] });
+  const r = await N.fetchIceServers(f, 'https://turn.x.workers.dev/', 500);
+  assert.equal(f.url, 'https://turn.x.workers.dev/');
+  assert.equal(r.source, 'worker');
+  assert.deepEqual(r.iceServers[1].urls, ['turn:turn.cloudflare.com:3478']);
+  assert.equal(r.iceServers[1].credential, 'c');
+});
+
+test('fetchIceServers: без адреса, при ошибке или зависании — запасные серверы и причина', async () => {
+  const none = await N.fetchIceServers(okFetch({}), '', 100);
+  assert.equal(none.source, 'default');
+  assert.deepEqual(none.iceServers, N.ICE_SERVERS);
+  const bad = await N.fetchIceServers(okFetch({ error: 'x' }, 502), 'https://w', 100);
+  assert.equal(bad.source, 'default');
+  assert.match(bad.error, /502/);
+  const broken = await N.fetchIceServers(okFetch({ iceServers: 'мусор' }), 'https://w', 100);
+  assert.equal(broken.source, 'default');
+  const t0 = Date.now();
+  const hang = await N.fetchIceServers(() => new Promise(() => {}), 'https://w', 60);
+  assert.equal(hang.source, 'default');
+  assert.match(hang.error, /timeout/);
+  assert.ok(Date.now() - t0 < 500);
+});
+
+test('peerTransport: использует переданные серверы ICE', async () => {
+  const P = fakePeerClass();
+  const ice = [{ urls: 'turn:t', username: 'u', credential: 'c' }];
+  await N.peerTransport(P, 'me', null, { iceServers: ice });
+  assert.deepEqual(P.made[0].options.config.iceServers, ice);
+});
+
+test('runDiagnostics: проверяет те серверы ICE, что ему дали', async () => {
+  let seen = null;
+  const RTC = class extends fakeRTC(['host', 'srflx', 'relay']) { constructor(cfg) { super(cfg); seen = cfg.iceServers; } };
+  const ice = [{ urls: 'turn:mine', username: 'u', credential: 'c' }];
+  await N.runDiagnostics({ RTC, loadPeer: async () => fakePeerClass(), timeout: 100, iceServers: ice });
+  assert.deepEqual(seen, ice);
+});
+
+// ---------- «Код занят» и потеря сервера ----------
+test('openWithRetry: «код занят» — повторяет и в итоге открывает', async () => {
+  let n = 0;
+  const retries = [];
+  const t = await N.openWithRetry(async () => { n++; if (n < 3) { const e = new Error('unavailable-id'); e.type = 'unavailable-id'; throw e; } return 'ok'; }, { tries: 5, delay: 10, onRetry: (i) => retries.push(i) });
+  assert.equal(t, 'ok');
+  assert.equal(n, 3);
+  assert.deepEqual(retries, [1, 2]);
+});
+
+test('openWithRetry: сдаётся после заданного числа попыток и не повторяет другие ошибки', async () => {
+  let n = 0;
+  await assert.rejects(N.openWithRetry(async () => { n++; const e = new Error('unavailable-id'); e.type = 'unavailable-id'; throw e; }, { tries: 3, delay: 5 }), (e) => e.type === 'unavailable-id');
+  assert.equal(n, 3);
+  let m = 0;
+  await assert.rejects(N.openWithRetry(async () => { m++; const e = new Error('network'); e.type = 'network'; throw e; }, { tries: 3, delay: 5 }));
+  assert.equal(m, 1, 'сетевую ошибку не повторяем');
+});
+
+test('peerTransport: при потере сервера подключений переподключается, после close — нет', async () => {
+  const P = fakePeerClass();
+  const t = await N.peerTransport(P, 'gm', null, { reconnectDelay: 10 });
+  const p = P.made[0];
+  let rc = 0;
+  p.reconnect = () => { rc++; };
+  p.emit('disconnected');
+  await wait(40);
+  assert.equal(rc, 1);
+  t.close();
+  p.emit('disconnected');
+  await wait(40);
+  assert.equal(rc, 1, 'после закрытия не переподключаемся');
+});

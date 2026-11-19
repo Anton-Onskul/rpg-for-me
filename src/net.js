@@ -58,7 +58,8 @@
     const log = o.log || null;
     const note = (level, text, data) => { if (log) log.add(level, text, data); };
     return new Promise((resolve, reject) => {
-      const peer = new PeerClass(myId, Object.assign({ config: { iceServers: ICE_SERVERS } }, o.peer || {}));
+      const peer = new PeerClass(myId, Object.assign({ config: { iceServers: o.iceServers || ICE_SERVERS } }, o.peer || {}));
+      let closed = false;
       const conns = {};
       const queues = {};
       let handler = null;
@@ -93,7 +94,7 @@
         onMessage(fn) { handler = fn; },
         onClose(fn) { closeHandler = fn; },
         onError(fn) { errorHandler = fn; },
-        close() { try { peer.destroy(); } catch (e) { /* уже закрыт */ } },
+        close() { closed = true; try { peer.destroy(); } catch (e) { /* уже закрыт */ } },
       };
       peer.on('connection', (c) => { note('info', 'Входящее подключение: ' + c.peer); wire(c); });
       peer.on('error', (e) => {
@@ -101,7 +102,16 @@
         note('error', 'Ошибка PeerJS: ' + code, { type: code, message: e && e.message });
         if (!opened) { const err = new Error(code); err.type = code; reject(err); } else fail(code);
       });
-      peer.on('disconnected', () => note('warn', 'Отключение от сервера подключений'));
+      // Мобильный интернет рвёт связь с сервером подключений — без переподключения новые игроки не найдут стол.
+      peer.on('disconnected', () => {
+        note('warn', 'Отключение от сервера подключений');
+        if (!opened || closed) return;
+        setTimeout(() => {
+          if (closed || peer.destroyed) return;
+          note('info', 'Переподключаюсь к серверу подключений');
+          try { peer.reconnect(); } catch (e) { note('error', 'Не удалось переподключиться: ' + errType(e)); }
+        }, o.reconnectDelay != null ? o.reconnectDelay : 2000);
+      });
       peer.on('open', () => {
         opened = true;
         note('info', 'Сервер подключений: на связи как ' + myId);
@@ -111,8 +121,41 @@
     });
   }
 
+  /** Повтор открытия, пока сервер держит код стола за прошлым подключением (после перезагрузки — до минуты). */
+  async function openWithRetry(open, opts) {
+    const o = opts || {};
+    const tries = o.tries || 12;
+    for (let i = 1; ; i++) {
+      try { return await open(); } catch (e) {
+        if (errType(e) !== 'unavailable-id' || i >= tries) throw e;
+        if (o.onRetry) o.onRetry(i);
+        await new Promise((r) => setTimeout(r, o.delay != null ? o.delay : 5000));
+      }
+    }
+  }
+
+  // ---------- Свой ретранслятор: временные пароли от Worker ----------
+  const no53 = (urls) => [].concat(urls || []).filter((u) => typeof u === 'string' && !/:53(\?|$)/.test(u));
+  /** fetchFn(url) → Response; при любой беде — запасные серверы и причина в error. */
+  function fetchIceServers(fetchFn, url, timeoutMs) {
+    const fallback = (error) => ({ source: 'default', iceServers: ICE_SERVERS, error });
+    if (!url) return Promise.resolve(fallback());
+    return new Promise((resolve) => {
+      const tm = setTimeout(() => resolve(fallback('timeout')), timeoutMs || 5000);
+      const done = (r) => { clearTimeout(tm); resolve(r); };
+      Promise.resolve().then(() => fetchFn(url)).then(async (res) => {
+        if (!res.ok) return done(fallback('worker ' + res.status));
+        const d = await res.json();
+        if (!d || !Array.isArray(d.iceServers)) return done(fallback('bad-answer'));
+        const list = d.iceServers.map((x) => Object.assign({}, x, { urls: no53(x.urls) })).filter((x) => x.urls.length);
+        if (!list.length) return done(fallback('bad-answer'));
+        done({ source: 'worker', iceServers: list });
+      }).catch((e) => done(fallback((e && e.message) || 'fetch-failed')));
+    });
+  }
+
   // ---------- Понятные причины ошибок ----------
-  const SERVER_ERR = ['network', 'server-error', 'socket-error', 'socket-closed', 'load-failed', 'no-peer', 'unavailable-id-timeout', 'disconnected'];
+  const SERVER_ERR = ['unavailable-id', 'network', 'server-error', 'socket-error', 'socket-closed', 'load-failed', 'no-peer', 'unavailable-id-timeout', 'disconnected'];
   function explainError(code, room) {
     if (code === 'peer-unavailable') return `Стол с кодом ${room || ''} не найден. Проверьте код и что у мастера открыт стол.`.replace('  ', ' ');
     if (code === 'ice-failed' || code === 'negotiation-failed') return 'Мастер найден, но ваша сеть не пропускает соединение. Нажмите «Проверить связь».';
@@ -371,6 +414,6 @@
   const normalizeCode = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   const API = { memoryHub, channelTransport, peerTransport, multiTransport, createHost, createClient, roomCode, normalizeCode,
-    ICE_SERVERS, explainError, createLog, gatherCandidates, verdict, runDiagnostics, report };
+    ICE_SERVERS, explainError, openWithRetry, fetchIceServers, createLog, gatherCandidates, verdict, runDiagnostics, report };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.RPG_NET = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
