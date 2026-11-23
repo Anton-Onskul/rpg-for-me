@@ -1003,9 +1003,7 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
             <span class="desc">${esc(g.desc)}</span><span class="count">${n ? `Персонажей: ${n}` : 'Пока нет персонажей'}</span></button>`;
         }).join('')}
         ${SOON.map((s) => `<button class="game" disabled><span class="die">скоро</span><span class="name">${esc(s)}</span><span class="desc">Добавим позже.</span></button>`).join('')}
-      </div>
-      <div class="block join-cta"><div><b>Играете с мастером?</b><div class="saved">Подключитесь к его столу по коду: увидите карту, бой и кубики.</div></div>
-        <button class="btn primary" data-act="join">Подключиться к столу мастера</button></div>`;
+      </div>`;
   }
 
   // ---------- Экран 2: персонажи выбранной игры ----------
@@ -1033,7 +1031,9 @@ dialog textarea { width: 100%; min-height: 200px; box-sizing: border-box; font-f
             ? `<div class="confirm"><span>Удалить?</span><button class="btn danger" data-act="del-yes" data-id="${c.id}">Да</button><button class="btn" data-act="del-no">Нет</button></div>`
             : `<button class="btn danger" data-act="del" data-id="${c.id}" aria-label="Удалить ${esc(displayName(c))}">Удалить</button>`}
         </div>`).join('')}</div>`
-        : `<div class="empty">Здесь будут ваши персонажи ${esc(g.name)}. Нажмите «Новый персонаж» — откроется пустой лист.<br>Не знаете, с чего начать? В справке есть пошаговое создание.</div>`}`;
+        : `<div class="empty">Здесь будут ваши персонажи ${esc(g.name)}. Нажмите «Новый персонаж» — откроется пустой лист.<br>Не знаете, с чего начать? В справке есть пошаговое создание.</div>`}
+      <div class="block join-cta"><div><b>Играете с мастером?</b><div class="saved">Подключитесь к его столу по коду: увидите карту, бой и кубики.</div></div>
+        <button class="btn primary" data-act="join">Подключиться к столу мастера</button></div>`;
   }
 
   // ---------- Экран 3: лист ----------

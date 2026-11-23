@@ -441,3 +441,23 @@ test('D&D: стандартный режим — только Книга игр�
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('подключение к мастеру доступно после выбора НРИ, а не на экране выбора', async () => {
+  const { page, errors, context } = await open(390, 800, { touch: true });
+  const join = page.locator('#view [data-act="join"]');
+  assert.equal(await join.count(), 0, 'на экране выбора игры нет подключения');
+  for (const system of ['dnd5e', 'gurps4e', 'munchkin']) {
+    await page.click('[data-game="' + system + '"]');
+    await page.waitForSelector('[data-act="new"]');
+    assert.equal(await join.count(), 1, 'кнопка доступна для ' + system);
+    assert.equal(await join.isVisible(), true);
+    await page.click('[data-act="join"]');
+    await page.waitForSelector('#joinForm');
+    assert.equal(await page.locator('#joinCode').count(), 1, 'форма подключения сохранена');
+    await page.goto('http://app.test/#games');
+    await page.waitForSelector('.game[data-game]');
+    assert.equal(await join.count(), 0);
+  }
+  assert.deepEqual(errors, []);
+  await context.close();
+});
